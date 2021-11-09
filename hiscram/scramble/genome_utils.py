@@ -12,14 +12,6 @@ from typing import Optional, Tuple
 from dataclass import dataclass
 from ..breakpoint import Fragment
 
-@dataclass
-class StruVar:
-    """Represents a simple structural variant (DEL/INV/INS)."""
-    chrom: str
-    coord: int
-    sv_type:  str
-
-
 class GenomeMixer(object):
     """
     Handles genome edition through different types of structural variations.

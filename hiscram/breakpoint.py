@@ -25,7 +25,7 @@ class Fragment:
 
     Attributes
     ----------
-    
+
     chrom:
         Chromosome on which the fragment is located.
     start:
@@ -37,6 +37,7 @@ class Fragment:
     chrom: str
     start: int
     end: int
+    is_reverse: bool = False
 
     def __len__(self) -> int:
         return self.end - self.start
@@ -55,12 +56,16 @@ class Fragment:
             return overlap_end - overlap_start
         return 0
 
-    def split(self, rel_pos: int) -> Fragment:
+    def split(self, rel_pos: int) -> Tuple[Fragment, Fragment]:
         """Split the fragment at a positiion relative from the start."""
         left_frag, right_frag = copy.copy(self), copy.copy(self)
         left_frag.end = self.start + rel_pos
         right_frag.start = self.start + rel_pos
         return (left_frag, right_frag)
+
+    def flip(self):
+        """Change fragment's sign."""
+        self.is_reverse = not self.is_reverse
 
 
 @dataclass
@@ -150,8 +155,7 @@ class BreakPoint:
         return compat_chroms & compat_signs
 
     def overlap(self, other) -> int:
-        """Amount of overlap between two breakpoint's fragments
-        """
+        """Amount of overlap between two breakpoint's fragments"""
         if self.pos2.sign != other.pos1.sign:
             return self.frag2.overlap(other.frag1)
         return 0
@@ -160,4 +164,3 @@ class BreakPoint:
         """Ensure pos1 and frag1 correspond to the smallest position."""
         if self.pos1 > self.pos2:
             self.pos1, self.pos2 = self.pos2, self.pos1
-
