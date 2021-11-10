@@ -1,4 +1,4 @@
-from typing import Dict, Generator
+from typing import Dict, Iterator
 import pyfastx
 import numpy as np
 import hiscram.breakpoint as bp
@@ -108,8 +108,8 @@ class Chromosome:
             self.frags[frag_end].start = end
         self.clean_frags()
 
-    def get_seq(self, fasta: pyfastx.Fasta) -> Generator[str, str, str]:
-        """yields chromosome sequence, fragment by fragment."""
+    def get_seq(self, fasta: pyfastx.Fasta) -> Iterator[str]:
+        """Yields chromosome sequence, fragment by fragment."""
         for frag in self.frags:
             strand = "-" if frag.is_reverse else "+"
             # Note: fasta.fetch is 1-based...
@@ -126,6 +126,13 @@ class Genome:
         self.chroms = {}
         for seq in fasta:
             self.chroms[seq.name] = Chromosome(seq.name, len(seq))
+
+    @property
+    def chromsizes(self) -> Dict[str, int]:
+        chromsizes = {}
+        for chrom in self.chroms.values():
+            chromsizes[chrom.name] = len(chrom)
+        return chromsizes
 
     def delete(self, chrom: str, start: int, end: int):
         self.chroms[chrom].delete(start, end)
@@ -155,7 +162,7 @@ class Genome:
 
     def get_seq(
         self,
-    ) -> Dict[str, Generator[str, str, str]]:
+    ) -> Dict[str, Iterator[str]]:
         seqs = {}
         for seq in self.fasta:
             seqs[seq.name] = self.chroms[seq.name].get_seq(self.fasta)
