@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Dict, Generator
 import pyfastx
 import numpy as np
 import hiscram.breakpoint as bp
@@ -6,7 +6,7 @@ import hiscram.breakpoint as bp
 
 class Chromosome:
     """Representation of a chromosome as a collection of fragments.
-    Each fragment represents a region of the original genome."""
+    Each fragment represents a (0-based, right-open) region of the original genome."""
 
     def __init__(self, name: str, length: int):
         self.name = name
@@ -37,7 +37,7 @@ class Chromosome:
             self.frags.insert(frag_id, frag_ins)
         else:
             # Insertion inside a fragment, split it and add fragment in between.
-            frag_id = np.searchsorted(bounds, position) - 1
+            frag_id = max(np.searchsorted(bounds, position) - 1, 0)
             frag_l, frag_r = self.frags.pop(frag_id).split(
                 position - bounds[frag_id]
             )
@@ -47,8 +47,8 @@ class Chromosome:
     def invert(self, start: int, end: int):
         """Updates fragments by inverting a portion of the chromosome."""
         bounds = self.boundaries
-        frag_start = np.searchsorted(bounds, start) - 1
-        frag_end = np.searchsorted(bounds, end) - 1
+        frag_start = max(np.searchsorted(bounds, start) - 1, 0)
+        frag_end = max(np.searchsorted(bounds, end) - 1, 0)
         start_dist = start - bounds[frag_start]
         end_dist = end - bounds[frag_end]
 
@@ -82,8 +82,8 @@ class Chromosome:
     def delete(self, start: int, end: int):
         """Updates fragments by deleting a portion of the chromosome."""
         bounds = self.boundaries
-        frag_start = np.searchsorted(bounds, start) - 1
-        frag_end = np.searchsorted(bounds, end) - 1
+        frag_start = max(np.searchsorted(bounds, start) - 1, 0)
+        frag_end = max(np.searchsorted(bounds, end) - 1, 0)
         del_size = end - start
         start_dist = start - self.frags[frag_start].start
         # Deletion contained in a single fragment: split it and trim right part
@@ -108,11 +108,14 @@ class Chromosome:
             self.frags[frag_end].start = end
         self.clean_frags()
 
-    def get_seq(self, fasta: pyfastx.Fastx):
+    def get_seq(self, fasta: pyfastx.Fasta) -> Generator[str, str, str]:
         """yields chromosome sequence, fragment by fragment."""
         for frag in self.frags:
             strand = "-" if frag.is_reverse else "+"
-            yield fasta.fetch(self.name, (frag.end, frag.start), strand=strand)
+            # Note: fasta.fetch is 1-based...
+            yield fasta.fetch(
+                self.name, (int(frag.start + 1), (frag.end)), strand=strand
+            )
 
 
 class Genome:
@@ -134,16 +137,26 @@ class Genome:
         self.chroms[chrom].invert(start, end)
 
     def translocate(
-        self, region: bp.Fragment, target: bp.Position, invert: bool = False
+        self,
+        target_chrom: str,
+        target_pos: int,
+        source_region: bp.Fragment,
+        invert: bool = False,
     ):
-        frag_size = region.end - region.start
-        self.chroms[target.chrom].insert(target.coord, frag_size)
+        frag_size = source_region.end - source_region.start
+        self.chroms[target_chrom].insert(target_pos, frag_size)
         if invert:
-            self.chroms[target.chrom].invert(
-                target.coord, target.coord + frag_size
+            self.chroms[target_chrom].invert(
+                target_pos, target_pos + frag_size
             )
-        self.chroms[region.chrom].delete(region.start, region.end)
+        self.chroms[source_region.chrom].delete(
+            source_region.start, source_region.end
+        )
 
-    def get_seq(self):
+    def get_seq(
+        self,
+    ) -> Dict[str, Generator[str, str, str]]:
+        seqs = {}
         for seq in self.fasta:
-            self.chroms[seq.name].get_seq(self.fasta)
+            seqs[seq.name] = self.chroms[seq.name].get_seq(self.fasta)
+        return seqs
