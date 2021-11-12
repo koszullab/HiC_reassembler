@@ -1,16 +1,16 @@
 """
 Utilities to generate work with genomes.
 """
+import sys
 import random
-import numpy as np
-import pandas as pd
-import cooler
-import pyfastx
-from Bio import SeqIO, Seq
 import json
+from typing import Dict, Union, Any
+import numpy as np
+import pyfastx
 from typing import Optional, Tuple
+from hiscram import SCRAMBLE_CONFIG_PATH
 from hiscram.genome import Genome
-from hiscram.breakpoint import Fragment
+from hiscram.regions import Fragment
 
 
 class Mixer(object):
@@ -19,7 +19,7 @@ class Mixer(object):
 
     Examples
     --------
-        mix = GenomeMixer("genome.fasta", "config.json", "profile="Dmel")
+        mix = Mixer("genome.fasta", "config.json", "profile="Dmel")
         mix.generate_sv()
         mix.edit_genome("new_genome.fasta")
 
@@ -39,14 +39,14 @@ class Mixer(object):
     def __init__(
         self,
         genome_path: str,
-        config_path: str,
+        config_path: str = SCRAMBLE_CONFIG_PATH,
         config_profile: Optional[str] = None,
     ):
-        self.config = self.load_profile(profile=config_profile)
+        self.config = self.load_profile(config_path, profile=config_profile)
         self.genome = Genome(pyfastx.Fasta(genome_path))
         self.svs = []
 
-    def load_profile(self, profile: Optional[str] = None):
+    def load_profile(self, path: str, profile: Optional[str] = None) -> Dict[str, Any]:
         """
         Load SV profile from a JSON config file. The top level JSON object is a
         profile. A config file can have multiple profiles, but only one will be
@@ -65,20 +65,22 @@ class Mixer(object):
             A dictionary of SV types structured like
             {"sv_type":{"property": value, ...}, ...}
         """
-        config = json.load(open(self.config_path, "r"))
+        config = json.load(open(path, "r"))
         if not profile:
             if len(config) > 1:
                 print(
                     "You must specify a profile name if multiple profiles "
                     "appear in the JSON config file"
                 )
-                raise ValueError
+                raise ValueError(
+                    f"No profile specified. Valid profiles are: {', '.join(config.keys())}"
+                )
             else:
                 profile = config.keys()[0]
 
         return config[profile]
 
-    def generate_sv(self) -> pd.DataFrame:
+    def generate_sv(self):
         """
         Generates random structural variations, based on the parameters loaded
         from the instance's config file.
@@ -91,76 +93,58 @@ class Mixer(object):
         """
         # Relative abundance of each event type (placeholder values)
         # rel_abun = {"INV": 8, "DEL": 400, "DUP": 60, "INS": 160, "CNV": 350}
-        all_chroms_sv = []
-        for chrom, size in self.genome.chromsizes.items():
-            n_sv = round(size * self.config["SV_freq"])
-            sv_count = 0
-            # TODO: Randomize order of SVs (currently all INV, then all DEL...)
-            for sv_name, sv_char in self.config["SV_types"].items():
-                # multiply proportion of SV type by total SV freq desired to
-                # get number of events of this type.
-                n_event = round(n_sv * sv_char["prop"])
+        n_sv = round(len(self.genome) * self.config["SV_freq"])
+        sv_count = 0
+        # multiply proportion of each SV type by total desired SV freq to
+        # get total number of events of each type.
+        n_events = {
+            name: np.floor(n_sv * sv["prop"])
+            for name, sv in self.config["SV_types"].items()
+        }
 
-                # Safeguard rounding errors
-                if sv_count + n_event > n_sv:
-                    n_event -= (n_event + sv_count) - n_sv
+        print(
+            f"Generating {', '.join([str(num) + ' ' + sv for sv, num in n_events.items()])}"
+        )
+        for event_type in np.random.choice(n_events.keys(), n_events.values()):
+            event_cfg = self.config["SV_types"][event_type]
+            # Start position is random and length is picked from a normal
+            # distribution centered around mean length.
+            size = abs(
+                np.random.normal(loc=event_cfg["mean_size"], scale=event_cfg["sd_size"])
+            )
+            region = get_random_region(self.genome, size)
+            target_pos = get_random_region(self.genome, 1)
+            # Make sure the inversion does not go beyond chromosome.
+            end = min(size, end)
+            self.svs.append((event_type, region, target_pos))
+            if event_type == "DEL":
+                self.genome.delete(region.chrom, region.start, region.end)
+            elif event_type == "INS":
+                self.genome.insert(target_pos.chrom, target_pos.start, region)
+            elif event_type == "INV":
+                self.genome.invert(region.chrom, region.start, region.end)
+            elif event_type == "TRA":
+                inv = np.random.choice([False, True])
+                self.genome.translocate(target_pos.chrom, target_pos.start, region, inv)
+            else:
+                raise NotImplementedError("Unknown SV type.")
 
-                print("Generating {0} {1}".format(n_event, sv_name))
-                for _ in range(n_event):
-                    # Start position is random and length is picked from a normal
-                    # distribution centered around mean length.
-                    size = abs(
-                        np.random.normal(
-                            loc=sv_char["mean_size"], scale=sv_char["sd_size"]
-                        )
-                    )
-                    region = get_random_region(self.genome, size)
-                    target_pos = get_random_region(self.genome, 1)
-                    # Make sure the inversion does not go beyond chromosome.
-                    end = min(size, end)
-                    if sv_name == "DEL":
-                        self.genome.delete(
-                            region.chrom, region.start, region.end
-                        )
-                    elif sv_name == "INS":
-                        self.genome.insert(
-                            target_pos.chrom, target_pos.start, region
-                        )
-                    elif sv_name == "INV":
-                        self.genome.invert(
-                            region.chrom, region.start, region.end
-                        )
-                    elif sv_name == "TRA":
-                        inv = np.random.choice([False, True])
-                        self.genome.translocate(
-                            target_pos.chrom, target_pos.start, region, inv
-                        )
-
-                    sv_count += 1
-
-    def get_breakpoints(self):
-        ...
+            sv_count += 1
 
 
 def get_random_region(genome: Genome, region_size: int = 1000) -> Fragment:
     """Return a random region from the genome (chrom, start, end)."""
     # Exclude chromosomes smaller than slice_size
     chrom_sizes = {
-        name: size
-        for name, size in genome.chromsizes.items()
-        if size > region_size
+        name: size for name, size in genome.chromsizes.items() if size > region_size
     }
 
     # Pick a random region of slice_size bp in a random chromosome and write it
     picked_chrom = random.choices(
-        chrom_sizes.keys(),
-        weights=chrom_sizes.values(),
-        k=1,
+        chrom_sizes.keys(), weights=chrom_sizes.values(), k=1,
     )[0]
     start_slice = int(
-        np.random.randint(
-            low=0, high=chrom_sizes[picked_chrom] - region_size, size=1
-        )
+        np.random.randint(low=0, high=chrom_sizes[picked_chrom] - region_size, size=1)
     )
     end_slice = int(start_slice + region_size)
 
@@ -168,9 +152,7 @@ def get_random_region(genome: Genome, region_size: int = 1000) -> Fragment:
 
 
 def save_genome_slice(
-    fasta: pyfastx.Fasta,
-    region: Fragment,
-    out_path: str,
+    fasta: pyfastx.Fasta, region: Fragment, out_path: str,
 ):
     """
     Given an input fasta file, slice a random region of a random chromosome and

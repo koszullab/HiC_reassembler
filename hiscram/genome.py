@@ -1,7 +1,7 @@
-from typing import Dict, Iterator
+from typing import List, Dict, Iterator
 import pyfastx
 import numpy as np
-import hiscram.breakpoint as bp
+from hiscram.regions import BreakPoint, Fragment, Position
 
 
 class Chromosome:
@@ -10,7 +10,7 @@ class Chromosome:
 
     def __init__(self, name: str, length: int):
         self.name = name
-        self.frags = [bp.Fragment(self.name, 0, length)]
+        self.frags = [Fragment(self.name, 0, length)]
         self.breakpoints = []
 
     def __len__(self):
@@ -28,7 +28,7 @@ class Chromosome:
         """Purge 0-length fragments."""
         self.frags = [frag for frag in self.frags if len(frag)]
 
-    def insert(self, position: int, frag_ins: bp.Fragment):
+    def insert(self, position: int, frag_ins: Fragment):
         """Updates fragments by inserting a sequence in the chromosome."""
         bounds = self.boundaries
         if position in bounds:
@@ -38,9 +38,7 @@ class Chromosome:
         else:
             # Insertion inside a fragment, split it and add fragment in between.
             frag_id = max(np.searchsorted(bounds, position) - 1, 0)
-            frag_l, frag_r = self.frags.pop(frag_id).split(
-                position - bounds[frag_id]
-            )
+            frag_l, frag_r = self.frags.pop(frag_id).split(position - bounds[frag_id])
             for frag in [frag_r, frag_ins, frag_l]:
                 self.frags.insert(frag_id, frag)
 
@@ -117,6 +115,16 @@ class Chromosome:
                 self.name, (int(frag.start + 1), (frag.end)), strand=strand
             )
 
+    def get_breakpoints(self) -> Iterator[BreakPoint]:
+        for frag_id in range(0, len(self.frags) - 1):
+            frag1, frag2 = self.frags[frag_id : frag_id + 2]
+            p1 = Position(self.name, frag1.end, not frag1.is_reverse)
+            p2 = Position(self.name, frag2.end, not frag2.is_reverse)
+            breakpoint = BreakPoint(p1, p2)
+            breakpoint.frag1 = frag1
+            breakpoint.frag2 = frag2
+            yield breakpoint
+
 
 class Genome:
     """Collection of chromosomes allowing complex SVs like translocations."""
@@ -126,6 +134,9 @@ class Genome:
         self.chroms = {}
         for seq in fasta:
             self.chroms[seq.name] = Chromosome(seq.name, len(seq))
+
+    def __len__(self):
+        return sum([len(chrom) for chrom in self.chroms.values()])
 
     @property
     def chromsizes(self) -> Dict[str, int]:
@@ -137,7 +148,7 @@ class Genome:
     def delete(self, chrom: str, start: int, end: int):
         self.chroms[chrom].delete(start, end)
 
-    def insert(self, chrom: str, position: int, frag: bp.Fragment):
+    def insert(self, chrom: str, position: int, frag: Fragment):
         self.chroms[chrom].insert(position, frag)
 
     def invert(self, chrom: str, start: int, end: int):
@@ -147,23 +158,23 @@ class Genome:
         self,
         target_chrom: str,
         target_pos: int,
-        source_region: bp.Fragment,
+        source_region: Fragment,
         invert: bool = False,
     ):
         frag_size = source_region.end - source_region.start
         self.chroms[target_chrom].insert(target_pos, frag_size)
         if invert:
-            self.chroms[target_chrom].invert(
-                target_pos, target_pos + frag_size
-            )
-        self.chroms[source_region.chrom].delete(
-            source_region.start, source_region.end
-        )
+            self.chroms[target_chrom].invert(target_pos, target_pos + frag_size)
+        self.chroms[source_region.chrom].delete(source_region.start, source_region.end)
 
-    def get_seq(
-        self,
-    ) -> Dict[str, Iterator[str]]:
+    def get_seq(self) -> Dict[str, Iterator[str]]:
         seqs = {}
         for seq in self.fasta:
             seqs[seq.name] = self.chroms[seq.name].get_seq(self.fasta)
         return seqs
+
+    def get_breakpoints(self) -> List[BreakPoint]:
+        bps = []
+        for chrom in self.chroms.values():
+            bps += [br for br in chrom.get_breakpoints()]
+        return bps

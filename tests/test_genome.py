@@ -2,7 +2,7 @@ import tempfile
 import pytest
 import pyfastx
 import hiscram.genome as hg
-import hiscram.breakpoint as bp
+from hiscram.regions import Fragment
 
 
 @pytest.fixture
@@ -41,27 +41,27 @@ def test_chrom_boundaries(chrom):
 
 
 def test_chrom_clean_frags(chrom):
-    chrom.frags.append(bp.Fragment("chr0", 10, 10))
+    chrom.frags.append(Fragment("chr0", 10, 10))
     assert len(chrom.frags) == 2
     chrom.clean_frags()
     assert len(chrom.frags) == 1
 
 
 def test_chrom_insert_middle(chrom):
-    chrom.insert(2, bp.Fragment("chr0", 3, 5))
+    chrom.insert(2, Fragment("chr0", 3, 5))
     assert len(chrom.frags) == 3
     assert chrom.boundaries[1] == 2
     assert chrom.boundaries[2] == 4  # 10 + 11
 
 
 def test_chrom_insert_left(chrom):
-    chrom.insert(0, bp.Fragment("chr0", 5, 9))
+    chrom.insert(0, Fragment("chr0", 5, 9))
     assert len(chrom.frags) == 2
     assert list(chrom.boundaries) == [0, 4, 14]
 
 
 def test_chrom_insert_right(chrom):
-    chrom.insert(10, bp.Fragment("chr0", 5, 9))
+    chrom.insert(10, Fragment("chr0", 5, 9))
     assert len(chrom.frags) == 2
     assert list(chrom.boundaries) == [0, 10, 14]
 
@@ -103,15 +103,21 @@ def test_genome(genome):
 
 
 def test_genome_insert(genome):
-    genome.insert("chr1", 2, bp.Fragment("chr2", 1, 4))
+    genome.insert("chr1", 2, Fragment("chr2", 1, 4))
     assert len(genome.chroms["chr1"].frags) == 3
 
 
 def test_genome_translocate(genome):
-    genome.translocate("chr1", 3, bp.Fragment("chr2", 0, 4))
+    genome.translocate("chr1", 3, Fragment("chr2", 0, 4))
+    genome.get_seq
 
 
 def test_genome_get_seq(genome):
     seqs = genome.get_seq()
     for chrom in genome.chroms.keys():
         assert len("".join(list(seqs[chrom]))) == len(genome.chroms[chrom])
+
+
+def test_genome_get_breakpoints(genome):
+    bps = genome.get_breakpoints()
+    assert len(bps) == 0

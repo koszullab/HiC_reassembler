@@ -12,7 +12,8 @@ class Position:
 
     chrom: str
     coord: int
-    sign: str = field(default=None, compare=False)
+    # True means positive strand
+    sign: Optional[bool] = field(default=None, compare=False)
 
     def has_sign(self) -> bool:
         """Whether sign information is available."""
@@ -34,11 +35,7 @@ class Fragment:
     """
 
     def __init__(
-        self,
-        chrom: str,
-        start: int,
-        end: int,
-        is_reverse: bool = False,
+        self, chrom: str, start: int, end: int, is_reverse: bool = False,
     ):
         if end < start:
             raise ValueError("end cannot be smaller than start.")
@@ -78,7 +75,6 @@ class Fragment:
         self.is_reverse = not self.is_reverse
 
 
-@dataclass
 class BreakPoint:
     """Defines a breakpoint in the genome.
     A breakpoint associates 2 different genomic positions
@@ -93,12 +89,14 @@ class BreakPoint:
         Segments of DNA connected by the breakpoint
     """
 
-    pos1: Position
-    pos2: Position
+    def __init__(
+        self, pos1: Position, pos2: Position,
+    ):
 
-    # Properties are use to set/get fragments instead
-    _frag1: Fragment = None
-    _frag2: Fragment = None
+        # Properties are use to set/get fragments instead
+        self._frag1 = None
+        self._frag2 = None
+        self.pos1, self.pos2 = pos1, pos2
 
     @property
     def signs(self) -> Optional[Tuple[str, str]]:
@@ -112,7 +110,7 @@ class BreakPoint:
         of a fragment."""
         right_chrom = pos.chrom == frag.chrom
         if pos.has_sign():
-            if pos.sign == "+":
+            if pos.sign:
                 right_pos = pos.coord == frag.end
             else:
                 right_pos = pos.coord == frag.start

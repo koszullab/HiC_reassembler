@@ -1,23 +1,18 @@
 from copy import copy
 import pytest
-import hiscram.breakpoint as bp
+from hiscram.regions import BreakPoint, Fragment, Position
 
 chroms = ["chr1", "chr1", "chr2", "chr2"]
 coords = [100, 300, 1000, 10000]
-signs = ["-", "+", "-", None]
+signs = [False, True, False, None]
 
 positions = [
-    bp.Position(chrom, coord, sign)
-    for chrom, coord, sign in zip(chroms, coords, signs)
+    Position(chrom, coord, sign) for chrom, coord, sign in zip(chroms, coords, signs)
 ]
 
-fragments = [
-    bp.Fragment(pos.chrom, pos.coord, pos.coord + 100) for pos in positions
-]
+fragments = [Fragment(pos.chrom, pos.coord, pos.coord + 100) for pos in positions]
 
-breakpoints = [
-    bp.BreakPoint(p1, p2) for p1, p2 in zip(positions[1:], positions[:-1])
-]
+breakpoints = [BreakPoint(p1, p2) for p1, p2 in zip(positions[1:], positions[:-1])]
 
 
 @pytest.mark.parametrize("pos", positions)
@@ -62,10 +57,8 @@ def test_fragment_split(frag):
 
 
 def test_breakpoint_signs():
-    bp1 = bp.BreakPoint(
-        bp.Position("chr1", 100, "-"), bp.Position("chr1", 10000, "+")
-    )
-    bp2 = bp.BreakPoint(bp.Position("chr1", 300), bp.Position("chr2", 100))
+    bp1 = BreakPoint(Position("chr1", 100, "-"), Position("chr1", 10000, "+"))
+    bp2 = BreakPoint(Position("chr1", 300), Position("chr2", 100))
     assert bp1.has_signs()
     assert not bp2.has_signs()
 
@@ -76,26 +69,16 @@ def test_breakpoint_frag1(brp):
     # Attempting to set illegal fragments
     with pytest.raises(ValueError):
         # wrong chrom
-        brp.frag1 = bp.Fragment("chrxx", 9999, 99999)
+        brp.frag1 = Fragment("chrxx", 9999, 99999)
     with pytest.raises(ValueError):
         # wrong positions
-        brp.frag1 = bp.Fragment(
-            brp.pos1.chrom, brp.pos1.coord + 1, brp.pos1.coord + 1
-        )
+        brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord + 1, brp.pos1.coord + 1)
     # Connected on the side matching sign
     if brp.pos1.has_sign():
-        if brp.pos1.sign == "+":
-            brp.frag1 = bp.Fragment(
-                brp.pos1.chrom, brp.pos1.coord - 30, brp.pos1.coord
-            )
-        elif brp.pos1.sign == "-":
-            brp.frag1 = bp.Fragment(
-                brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1
-            )
+        if brp.pos1.sign == True:
+            brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord - 30, brp.pos1.coord)
+        elif brp.pos1.sign == False:
+            brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1)
         else:
-            brp.frag1 = bp.Fragment(
-                brp.pos1.chrom, brp.pos1.coord - 30, brp.pos1.coord
-            )
-            brp.frag1 = bp.Fragment(
-                brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1
-            )
+            brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord - 30, brp.pos1.coord)
+            brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1)

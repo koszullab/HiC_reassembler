@@ -3,6 +3,7 @@
 # of labels
 from hic_scrambler import input_utils as iu
 from hic_scrambler import genome_utils as gu
+from hiscram import SCRAMBLE_CONFIG_PATH
 import os
 from os.path import join
 import cooler
@@ -11,21 +12,13 @@ import numpy as np
 import pathlib
 import click
 
-CONFIG_PATH = join(os.path.dirname(__file__), "config", "template.json")
-
 
 @click.command()
 @click.option(
-    "--reads1",
-    "-1",
-    default=None,
-    help="Forward Hi-C reads",
+    "--reads1", "-1", default=None, help="Forward Hi-C reads",
 )
 @click.option(
-    "--reads2",
-    "-2",
-    default=None,
-    help="Reverse Hi-C reads",
+    "--reads2", "-2", default=None, help="Reverse Hi-C reads",
 )
 @click.option(
     "--binsize",
@@ -35,16 +28,10 @@ CONFIG_PATH = join(os.path.dirname(__file__), "config", "template.json")
     help="The resolution of matrices to generate, in basepair",
 )
 @click.option(
-    "--nruns",
-    "-n",
-    default=1,
-    help="The number of scramble runs to generate",
+    "--nruns", "-n", default=1, help="The number of scramble runs to generate",
 )
 @click.option(
-    "--tmpdir",
-    "-t",
-    default="./tmp",
-    help="Temporary directory to use for the runs.",
+    "--tmpdir", "-t", default="./tmp", help="Temporary directory to use for the runs.",
 )
 @click.argument("fasta", type=click.Path(exists=True))
 @click.argument("outdir", type=click.Path(exists=False))
@@ -94,7 +81,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         np.save(join(rundir, "truth.npy"), mat_ori)
 
         # Generate random structural variations and apply them to the genome
-        mixer = gu.GenomeMixer(sub_fasta, CONFIG_PATH, "Debug")
+        mixer = gu.GenomeMixer(sub_fasta, SCRAMBLE_CONFIG_PATH, "Debug")
         mixer.generate_sv()
         mod_genome = join(rundir, "mod_genome.fa")
         mixer.save_edited_genome(mod_genome)
