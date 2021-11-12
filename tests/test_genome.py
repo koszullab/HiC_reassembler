@@ -109,7 +109,8 @@ def test_genome_insert(genome):
 
 def test_genome_translocate(genome):
     genome.translocate("chr1", 3, Fragment("chr2", 0, 4))
-    genome.get_seq
+    seqs = genome.get_seq()
+    assert [fr for fr in seqs["chr1"]] == ["AAC", "GTGT", "CCAAACC"]
 
 
 def test_genome_get_seq(genome):
@@ -121,3 +122,7 @@ def test_genome_get_seq(genome):
 def test_genome_get_breakpoints(genome):
     bps = genome.get_breakpoints()
     assert len(bps) == 0
+    # genome.translocate("chr1", 3, Fragment("chr2", 0, 4))
+    genome.delete("chr1", 4, 6)
+    bps = genome.get_breakpoints()
+    assert len(bps) == 1

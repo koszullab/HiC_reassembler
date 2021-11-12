@@ -112,14 +112,14 @@ class Chromosome:
             strand = "-" if frag.is_reverse else "+"
             # Note: fasta.fetch is 1-based...
             yield fasta.fetch(
-                self.name, (int(frag.start + 1), (frag.end)), strand=strand
+                frag.chrom, (int(frag.start + 1), (frag.end)), strand=strand
             )
 
     def get_breakpoints(self) -> Iterator[BreakPoint]:
         for frag_id in range(0, len(self.frags) - 1):
             frag1, frag2 = self.frags[frag_id : frag_id + 2]
-            p1 = Position(self.name, frag1.end, not frag1.is_reverse)
-            p2 = Position(self.name, frag2.end, not frag2.is_reverse)
+            p1 = Position(self.name, frag1.end, frag1.is_reverse)
+            p2 = Position(self.name, frag2.start, not frag2.is_reverse)
             breakpoint = BreakPoint(p1, p2)
             breakpoint.frag1 = frag1
             breakpoint.frag2 = frag2
@@ -162,15 +162,15 @@ class Genome:
         invert: bool = False,
     ):
         frag_size = source_region.end - source_region.start
-        self.chroms[target_chrom].insert(target_pos, frag_size)
+        self.chroms[target_chrom].insert(target_pos, source_region)
         if invert:
             self.chroms[target_chrom].invert(target_pos, target_pos + frag_size)
         self.chroms[source_region.chrom].delete(source_region.start, source_region.end)
 
     def get_seq(self) -> Dict[str, Iterator[str]]:
         seqs = {}
-        for seq in self.fasta:
-            seqs[seq.name] = self.chroms[seq.name].get_seq(self.fasta)
+        for chrom in self.chroms.values():
+            seqs[chrom.name] = chrom.get_seq(self.fasta)
         return seqs
 
     def get_breakpoints(self) -> List[BreakPoint]:

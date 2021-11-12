@@ -8,16 +8,30 @@ from dataclasses import dataclass, field
 @dataclass(order=True)
 class Position:
     """A single position in the genome, defined by a
-    chromosome, genomic position and optionally a sign."""
+    chromosome, genomic position and optionally a sign.
+
+    Attributes
+    ----------
+
+    chrom:
+        The chromosome name.
+    coord:
+        The 0-based coordinate on the chromosome.
+    is_reverse:
+        Whether the position is on the - strand. This is used in
+        breakpoints to indicate whether the position is on the 5'
+        (-) or 3' (+) side.
+    
+    """
 
     chrom: str
     coord: int
-    # True means positive strand
-    sign: Optional[bool] = field(default=None, compare=False)
+    #  None
+    is_reverse: Optional[bool] = field(default=None, compare=False)
 
     def has_sign(self) -> bool:
         """Whether sign information is available."""
-        return not self.sign is None
+        return not self.is_reverse is None
 
 
 class Fragment:
@@ -102,7 +116,9 @@ class BreakPoint:
     def signs(self) -> Optional[Tuple[str, str]]:
         """Return signs if available."""
         if self.has_signs():
-            return self.pos1.sign, self.pos2.sign
+            sign1 = "-" if self.pos1.is_reverse else "+"
+            sign2 = "-" if self.pos2.is_reverse else "+"
+            return sign1, sign2
 
     @staticmethod
     def _check_pos_at_frag_end(pos: Position, frag: Fragment) -> bool:
@@ -110,10 +126,16 @@ class BreakPoint:
         of a fragment."""
         right_chrom = pos.chrom == frag.chrom
         if pos.has_sign():
-            if pos.sign:
-                right_pos = pos.coord == frag.end
+            if pos.is_reverse:
+                if frag.is_reverse:
+                    right_pos = pos.coord == frag.end
+                else:
+                    right_pos = pos.coord == frag.start
             else:
-                right_pos = pos.coord == frag.start
+                if frag.is_reverse:
+                    right_pos = pos.coord == frag.start
+                else:
+                    right_pos = pos.coord == frag.end
         else:
             right_pos = pos.coord in [frag.start, frag.end]
         return right_chrom & right_pos
@@ -138,8 +160,8 @@ class BreakPoint:
 
     @frag2.setter
     def frag2(self, frag: Fragment):
-        if self._check_pos_at_frag_end(self.pos1, frag):
-            self._frag1 = frag
+        if self._check_pos_at_frag_end(self.pos2, frag):
+            self._frag2 = frag
         else:
             raise ValueError(
                 "Attempted to set frag2 which does not match breakpoint.pos2."
