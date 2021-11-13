@@ -1,3 +1,9 @@
+"""
+Datastructures representing a genome as a collection of ragments linked by breakpoints.
+A number of methods allow to introduce structural variation in the genome, and retrieve
+the altered sequence.
+"""
+
 from typing import List, Dict, Iterator
 import pyfastx
 import numpy as np
@@ -107,7 +113,8 @@ class Chromosome:
         self.clean_frags()
 
     def get_seq(self, fasta: pyfastx.Fasta) -> Iterator[str]:
-        """Yields chromosome sequence, fragment by fragment."""
+        """Retrieve the chromosome sequence, as a generator yielding
+        the sequence by fragment."""
         for frag in self.frags:
             strand = "-" if frag.is_reverse else "+"
             # Note: fasta.fetch is 1-based...
@@ -116,10 +123,11 @@ class Chromosome:
             )
 
     def get_breakpoints(self) -> Iterator[BreakPoint]:
+        """Retrieve a generator yielding breakpoints in the chromosome."""
         for frag_id in range(0, len(self.frags) - 1):
             frag1, frag2 = self.frags[frag_id : frag_id + 2]
-            p1 = Position(self.name, frag1.end, frag1.is_reverse)
-            p2 = Position(self.name, frag2.start, not frag2.is_reverse)
+            p1 = Position(self.name, frag1.end, not frag1.is_reverse)
+            p2 = Position(self.name, frag2.start, frag2.is_reverse)
             breakpoint = BreakPoint(p1, p2)
             breakpoint.frag1 = frag1
             breakpoint.frag2 = frag2
@@ -127,7 +135,7 @@ class Chromosome:
 
 
 class Genome:
-    """Collection of chromosomes allowing complex SVs like translocations."""
+    """Collection of chromosomes allowing complex SVs such as translocations."""
 
     def __init__(self, fasta: pyfastx.Fasta):
         self.fasta = fasta
@@ -146,12 +154,15 @@ class Genome:
         return chromsizes
 
     def delete(self, chrom: str, start: int, end: int):
+        """Delete a genomic segment."""
         self.chroms[chrom].delete(start, end)
 
     def insert(self, chrom: str, position: int, frag: Fragment):
+        """Insert a new genomic segment."""
         self.chroms[chrom].insert(position, frag)
 
     def invert(self, chrom: str, start: int, end: int):
+        """Invert (i.e. flip) a genomic segment."""
         self.chroms[chrom].invert(start, end)
 
     def translocate(
@@ -161,6 +172,7 @@ class Genome:
         source_region: Fragment,
         invert: bool = False,
     ):
+        """Move a genomic segment to another genomic position."""
         frag_size = source_region.end - source_region.start
         self.chroms[target_chrom].insert(target_pos, source_region)
         if invert:
@@ -168,12 +180,15 @@ class Genome:
         self.chroms[source_region.chrom].delete(source_region.start, source_region.end)
 
     def get_seq(self) -> Dict[str, Iterator[str]]:
+        """Retrieve the genomic sequence of each chromosome. Each chromosome's
+        sequence is returned as a generator of (lazily-retrieved) fragment sequences."""
         seqs = {}
         for chrom in self.chroms.values():
             seqs[chrom.name] = chrom.get_seq(self.fasta)
         return seqs
 
     def get_breakpoints(self) -> List[BreakPoint]:
+        """Retrieve the list of all breakpoints between genomic fragments"""
         bps = []
         for chrom in self.chroms.values():
             bps += [br for br in chrom.get_breakpoints()]

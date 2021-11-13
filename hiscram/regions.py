@@ -1,4 +1,10 @@
-# Structures and methods to represent SV breakpoints and fragments.
+"""Structures and methods to represent SV breakpoints and fragments.
+This submodule defines a BreakPoint class representing connections between positions
+on separate fragments. Each breakpoint consists of two positions. Each of position is
+located on a fragment. Positions have a sign representing what end of a fragment
+they're on.
+"""
+#
 from __future__ import annotations
 import copy
 from typing import Optional, Tuple
@@ -17,21 +23,23 @@ class Position:
         The chromosome name.
     coord:
         The 0-based coordinate on the chromosome.
-    is_reverse:
-        Whether the position is on the - strand. This is used in
-        breakpoints to indicate whether the position is on the 5'
-        (-) or 3' (+) side.
+    sign:
+        Whether the position is on the 5' (-) or 3' (+) side.
     
     """
 
     chrom: str
     coord: int
-    #  None
-    is_reverse: Optional[bool] = field(default=None, compare=False)
+    #  None means unknown, True means 3'
+    sign: Optional[bool] = field(default=None, compare=False)
+
+    def __repr__(self):
+        sign_symbol = {None: "", True: "+", False: "-"}
+        return f"{self.chrom}:{self.coord}:{sign_symbol[self.sign]}"
 
     def has_sign(self) -> bool:
         """Whether sign information is available."""
-        return not self.is_reverse is None
+        return not self.sign is None
 
 
 class Fragment:
@@ -116,8 +124,8 @@ class BreakPoint:
     def signs(self) -> Optional[Tuple[str, str]]:
         """Return signs if available."""
         if self.has_signs():
-            sign1 = "-" if self.pos1.is_reverse else "+"
-            sign2 = "-" if self.pos2.is_reverse else "+"
+            sign1 = "+" if self.pos1.sign else "-"
+            sign2 = "+" if self.pos2.sign else "-"
             return sign1, sign2
 
     @staticmethod
@@ -126,16 +134,16 @@ class BreakPoint:
         of a fragment."""
         right_chrom = pos.chrom == frag.chrom
         if pos.has_sign():
-            if pos.is_reverse:
+            if pos.sign:
                 if frag.is_reverse:
-                    right_pos = pos.coord == frag.end
-                else:
                     right_pos = pos.coord == frag.start
+                else:
+                    right_pos = pos.coord == frag.end
             else:
                 if frag.is_reverse:
-                    right_pos = pos.coord == frag.start
-                else:
                     right_pos = pos.coord == frag.end
+                else:
+                    right_pos = pos.coord == frag.start
         else:
             right_pos = pos.coord in [frag.start, frag.end]
         return right_chrom & right_pos

@@ -17,7 +17,7 @@ breakpoints = [BreakPoint(p1, p2) for p1, p2 in zip(positions[1:], positions[:-1
 
 @pytest.mark.parametrize("pos", positions)
 def test_position_has_sign(pos):
-    assert pos.has_sign() == (False if pos.is_reverse is None else True)
+    assert pos.has_sign() == (False if pos.sign is None else True)
 
 
 @pytest.mark.parametrize("frag", fragments)
@@ -75,9 +75,9 @@ def test_breakpoint_frag1(brp):
         brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord + 1, brp.pos1.coord + 1)
     # Connected on the side matching sign
     if brp.pos1.has_sign():
-        if brp.pos1.is_reverse == False:
+        if brp.pos1.sign == True:
             brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord - 30, brp.pos1.coord)
-        elif brp.pos1.is_reverse == True:
+        elif brp.pos1.sign == False:
             brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1)
         else:
             brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord - 30, brp.pos1.coord)
