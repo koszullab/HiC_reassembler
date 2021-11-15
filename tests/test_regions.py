@@ -81,4 +81,23 @@ def test_breakpoint_frag1(brp):
             brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1)
         else:
             brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord - 30, brp.pos1.coord)
-            brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1)
+            brp.frag2 = Fragment(brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1)
+        assert brp.has_signs()
+
+
+def test_breakpoint_connect():
+    bp1 = breakpoints[0]
+    bp2 = breakpoints[1]
+    bp3 = breakpoints[2]
+    assert bp1.connect(bp2)
+    assert bp1.connect(bp3)
+
+
+@pytest.mark.parametrize("brp", breakpoints)
+def test_breakpoint_overlap(brp):
+    ...
+
+
+@pytest.mark.parametrize("brp", breakpoints)
+def test_breakpoint_flip(brp):
+    ...
