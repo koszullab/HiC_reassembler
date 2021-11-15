@@ -126,3 +126,12 @@ def test_genome_get_breakpoints(genome):
     genome.delete("chr1", 4, 6)
     bps = genome.get_breakpoints()
     assert len(bps) == 1
+
+
+def test_genome_breakpoints_connect(genome):
+    genome.translocate("chr2", 2, Fragment("chr1", 5, 7), invert=True)
+    bps = genome.get_breakpoints()
+    assert [bp.pos1.chrom for bp in bps] == ["chr1", "chr2", "chr1"]
+    assert [bp.pos1.coord for bp in bps] == [5, 2, 7]
+    assert bps[2].can_connect(bps[1], min_intersect=2) == True
+    assert len(bps) == 3

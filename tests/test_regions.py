@@ -7,12 +7,17 @@ coords = [100, 300, 1000, 10000]
 signs = [False, True, False, None]
 
 positions = [
-    Position(chrom, coord, sign) for chrom, coord, sign in zip(chroms, coords, signs)
+    Position(chrom, coord, sign)
+    for chrom, coord, sign in zip(chroms, coords, signs)
 ]
 
-fragments = [Fragment(pos.chrom, pos.coord, pos.coord + 100) for pos in positions]
+fragments = [
+    Fragment(pos.chrom, pos.coord, pos.coord + 100) for pos in positions
+]
 
-breakpoints = [BreakPoint(p1, p2) for p1, p2 in zip(positions[1:], positions[:-1])]
+breakpoints = [
+    BreakPoint(p1, p2) for p1, p2 in zip(positions[1:], positions[:-1])
+]
 
 
 @pytest.mark.parametrize("pos", positions)
@@ -57,7 +62,9 @@ def test_fragment_split(frag):
 
 
 def test_breakpoint_signs():
-    bp1 = BreakPoint(Position("chr1", 100, True), Position("chr1", 10000, False))
+    bp1 = BreakPoint(
+        Position("chr1", 100, True), Position("chr1", 10000, False)
+    )
     bp2 = BreakPoint(Position("chr1", 300), Position("chr2", 100))
     assert bp1.has_signs()
     assert not bp2.has_signs()
@@ -72,32 +79,32 @@ def test_breakpoint_frag1(brp):
         brp.frag1 = Fragment("chrxx", 9999, 99999)
     with pytest.raises(ValueError):
         # wrong positions
-        brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord + 1, brp.pos1.coord + 1)
+        brp.frag1 = Fragment(
+            brp.pos1.chrom, brp.pos1.coord + 1, brp.pos1.coord + 1
+        )
     # Connected on the side matching sign
     if brp.pos1.has_sign():
         if brp.pos1.sign == True:
-            brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord - 30, brp.pos1.coord)
+            brp.frag1 = Fragment(
+                brp.pos1.chrom, brp.pos1.coord - 30, brp.pos1.coord
+            )
         elif brp.pos1.sign == False:
-            brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1)
+            brp.frag1 = Fragment(
+                brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1
+            )
         else:
-            brp.frag1 = Fragment(brp.pos1.chrom, brp.pos1.coord - 30, brp.pos1.coord)
-            brp.frag2 = Fragment(brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1)
+            brp.frag1 = Fragment(
+                brp.pos1.chrom, brp.pos1.coord - 30, brp.pos1.coord
+            )
+            brp.frag2 = Fragment(
+                brp.pos1.chrom, brp.pos1.coord, brp.pos1.coord + 1
+            )
         assert brp.has_signs()
-
-
-def test_breakpoint_connect():
-    bp1 = breakpoints[0]
-    bp2 = breakpoints[1]
-    bp3 = breakpoints[2]
-    assert bp1.connect(bp2)
-    assert bp1.connect(bp3)
-
-
-@pytest.mark.parametrize("brp", breakpoints)
-def test_breakpoint_overlap(brp):
-    ...
 
 
 @pytest.mark.parametrize("brp", breakpoints)
 def test_breakpoint_flip(brp):
-    ...
+    brp.flip()
+    assert brp.pos1.chrom <= brp.pos2.chrom
+    if brp.pos1.chrom == brp.pos2.chrom:
+        assert brp.pos1.coord <= brp.pos2.coord

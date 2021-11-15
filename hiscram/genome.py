@@ -37,22 +37,23 @@ class Chromosome:
     def insert(self, position: int, frag_ins: Fragment):
         """Updates fragments by inserting a sequence in the chromosome."""
         bounds = self.boundaries
+        frag_id = max(np.searchsorted(bounds, position, side="right") - 1, 0)
         if position in bounds:
             # Insertion right between two fragments, add a fragment.
-            frag_id = np.where(bounds == position)[0][0]
             self.frags.insert(frag_id, frag_ins)
         else:
             # Insertion inside a fragment, split it and add fragment in between.
-            frag_id = max(np.searchsorted(bounds, position) - 1, 0)
-            frag_l, frag_r = self.frags.pop(frag_id).split(position - bounds[frag_id])
+            frag_l, frag_r = self.frags.pop(frag_id).split(
+                position - bounds[frag_id]
+            )
             for frag in [frag_r, frag_ins, frag_l]:
                 self.frags.insert(frag_id, frag)
 
     def invert(self, start: int, end: int):
         """Updates fragments by inverting a portion of the chromosome."""
         bounds = self.boundaries
-        frag_start = max(np.searchsorted(bounds, start) - 1, 0)
-        frag_end = max(np.searchsorted(bounds, end) - 1, 0)
+        frag_start = max(np.searchsorted(bounds, start, side="right") - 1, 0)
+        frag_end = max(np.searchsorted(bounds, end, side="left") - 1, 0)
         start_dist = start - bounds[frag_start]
         end_dist = end - bounds[frag_end]
 
@@ -126,8 +127,8 @@ class Chromosome:
         """Retrieve a generator yielding breakpoints in the chromosome."""
         for frag_id in range(0, len(self.frags) - 1):
             frag1, frag2 = self.frags[frag_id : frag_id + 2]
-            p1 = Position(self.name, frag1.end, not frag1.is_reverse)
-            p2 = Position(self.name, frag2.start, frag2.is_reverse)
+            p1 = Position(frag1.chrom, frag1.end, not frag1.is_reverse)
+            p2 = Position(frag2.chrom, frag2.start, frag2.is_reverse)
             breakpoint = BreakPoint(p1, p2)
             breakpoint.frag1 = frag1
             breakpoint.frag2 = frag2
@@ -176,8 +177,12 @@ class Genome:
         frag_size = source_region.end - source_region.start
         self.chroms[target_chrom].insert(target_pos, source_region)
         if invert:
-            self.chroms[target_chrom].invert(target_pos, target_pos + frag_size)
-        self.chroms[source_region.chrom].delete(source_region.start, source_region.end)
+            self.chroms[target_chrom].invert(
+                target_pos, target_pos + frag_size
+            )
+        self.chroms[source_region.chrom].delete(
+            source_region.start, source_region.end
+        )
 
     def get_seq(self) -> Dict[str, Iterator[str]]:
         """Retrieve the genomic sequence of each chromosome. Each chromosome's
