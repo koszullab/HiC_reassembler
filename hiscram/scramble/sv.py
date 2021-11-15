@@ -46,7 +46,9 @@ class Mixer(object):
         self.genome = Genome(pyfastx.Fasta(genome_path))
         self.svs = []
 
-    def load_profile(self, path: str, profile: Optional[str] = None) -> Dict[str, Any]:
+    def load_profile(
+        self, path: str, profile: Optional[str] = None
+    ) -> Dict[str, Any]:
         """
         Load SV profile from a JSON config file. The top level JSON object is a
         profile. A config file can have multiple profiles, but only one will be
@@ -84,12 +86,6 @@ class Mixer(object):
         """
         Generates random structural variations, based on the parameters loaded
         from the instance's config file.
-
-        Returns
-        -------
-        pandas.DataFrame :
-            A dataframe where each row is a SV. columns represent
-            sv_type, chrom, start, end.
         """
         # Relative abundance of each event type (placeholder values)
         # rel_abun = {"INV": 8, "DEL": 400, "DUP": 60, "INS": 160, "CNV": 350}
@@ -110,7 +106,9 @@ class Mixer(object):
             # Start position is random and length is picked from a normal
             # distribution centered around mean length.
             size = abs(
-                np.random.normal(loc=event_cfg["mean_size"], scale=event_cfg["sd_size"])
+                np.random.normal(
+                    loc=event_cfg["mean_size"], scale=event_cfg["sd_size"]
+                )
             )
             region = get_random_region(self.genome, size)
             target_pos = get_random_region(self.genome, 1)
@@ -125,7 +123,9 @@ class Mixer(object):
                 self.genome.invert(region.chrom, region.start, region.end)
             elif event_type == "TRA":
                 inv = np.random.choice([False, True])
-                self.genome.translocate(target_pos.chrom, target_pos.start, region, inv)
+                self.genome.translocate(
+                    target_pos.chrom, target_pos.start, region, inv
+                )
             else:
                 raise NotImplementedError("Unknown SV type.")
 
@@ -136,15 +136,21 @@ def get_random_region(genome: Genome, region_size: int = 1000) -> Fragment:
     """Return a random region from the genome (chrom, start, end)."""
     # Exclude chromosomes smaller than slice_size
     chrom_sizes = {
-        name: size for name, size in genome.chromsizes.items() if size > region_size
+        name: size
+        for name, size in genome.chromsizes.items()
+        if size > region_size
     }
 
     # Pick a random region of slice_size bp in a random chromosome and write it
     picked_chrom = random.choices(
-        chrom_sizes.keys(), weights=chrom_sizes.values(), k=1,
+        chrom_sizes.keys(),
+        weights=chrom_sizes.values(),
+        k=1,
     )[0]
     start_slice = int(
-        np.random.randint(low=0, high=chrom_sizes[picked_chrom] - region_size, size=1)
+        np.random.randint(
+            low=0, high=chrom_sizes[picked_chrom] - region_size, size=1
+        )
     )
     end_slice = int(start_slice + region_size)
 
@@ -152,7 +158,9 @@ def get_random_region(genome: Genome, region_size: int = 1000) -> Fragment:
 
 
 def save_genome_slice(
-    fasta: pyfastx.Fasta, region: Fragment, out_path: str,
+    fasta: pyfastx.Fasta,
+    region: Fragment,
+    out_path: str,
 ):
     """
     Given an input fasta file, slice a random region of a random chromosome and

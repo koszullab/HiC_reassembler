@@ -102,9 +102,9 @@ def test_breakpoint_frag1(brp):
         assert brp.has_signs()
 
 
-@pytest.mark.parametrize("brp", breakpoints)
-def test_breakpoint_flip(brp):
-    brp.flip()
-    assert brp.pos1.chrom <= brp.pos2.chrom
-    if brp.pos1.chrom == brp.pos2.chrom:
-        assert brp.pos1.coord <= brp.pos2.coord
+# @pytest.mark.parametrize("brp", breakpoints)
+# def test_breakpoint_flip(brp):
+#    brp.flip()
+#    assert brp.pos1.chrom <= brp.pos2.chrom
+#    if brp.pos1.chrom == brp.pos2.chrom:
+#        assert brp.pos1.coord <= brp.pos2.coord
