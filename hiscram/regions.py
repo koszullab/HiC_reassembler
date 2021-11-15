@@ -71,6 +71,10 @@ class Fragment:
     def __len__(self) -> int:
         return self.end - self.start
 
+    def __repr__(self) -> str:
+        sign = "-" if self.is_reverse else "+"
+        return f"{self.chrom}:{self.start}-{self.end}:{sign}"
+
     def middle(self) -> int:
         return (self.start + self.end) // 2
 
@@ -120,6 +124,15 @@ class BreakPoint:
         self._frag2 = None
         self.pos1, self.pos2 = pos1, pos2
 
+    def __repr__(self) -> str:
+        if self.has_frags():
+            p1 = self.frag1
+            p2 = self.frag2
+        else:
+            p1 = self.pos1
+            p2 = self.pos2
+        return f"{str(p1)}|{str(p2)}"
+
     @property
     def signs(self) -> Optional[Tuple[str, str]]:
         """Return signs if available."""
@@ -163,7 +176,7 @@ class BreakPoint:
             )
 
     @property
-    def frag2(self, frag: Fragment):
+    def frag2(self):
         return self._frag2
 
     @frag2.setter
