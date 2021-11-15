@@ -25,7 +25,7 @@ class Position:
         The 0-based coordinate on the chromosome.
     sign:
         Whether the position is on the 5' (-) or 3' (+) side.
-    
+
     """
 
     chrom: str
@@ -57,7 +57,11 @@ class Fragment:
     """
 
     def __init__(
-        self, chrom: str, start: int, end: int, is_reverse: bool = False,
+        self,
+        chrom: str,
+        start: int,
+        end: int,
+        is_reverse: bool = False,
     ):
         if end < start:
             raise ValueError("end cannot be smaller than start.")
@@ -100,11 +104,25 @@ class Fragment:
         """Change fragment's sign."""
         self.is_reverse = not self.is_reverse
 
+    def merge(self, other: Fragment) -> Optional[Fragment]:
+        """Merge two fragments with adjacent genomic positions. If fragments
+        cannot be merged (e.g. because they are not adjacent), returns None."""
+        compat_chroms = self.chrom == other.chrom
+        compat_signs = self.is_reverse != other.is_reverse
+        compat_coords = (self.start == other.end) or (other.start == self.end)
+        if compat_chroms and compat_signs and compat_coords:
+            start = min(self.start, other.start)
+            end = min(self.end, other.end)
+            frag = Fragment(self.chrom, start, end, self.is_reverse)
+        else:
+            frag = None
+        return frag
+
 
 class BreakPoint:
     """Defines a breakpoint in the genome.
-    A breakpoint associates 2 different genomic positions
-    from independent fragments.
+    A breakpoint associates 2 different genomic positions from independent
+    fragments. pos1 and frag1 represent the 5' side of the breakpoint (I think ?).
 
     Attributes
     ----------
@@ -116,7 +134,9 @@ class BreakPoint:
     """
 
     def __init__(
-        self, pos1: Position, pos2: Position,
+        self,
+        pos1: Position,
+        pos2: Position,
     ):
 
         # Properties are use to set/get fragments instead
@@ -172,7 +192,8 @@ class BreakPoint:
             self._frag1 = frag
         else:
             raise ValueError(
-                "Attempted to set frag1 which does not match breakpoint.pos1."
+                f"Attempted to set frag1 to {frag} which does not match "
+                f"breakpoint.pos1 of {self.pos1}."
             )
 
     @property
@@ -185,7 +206,8 @@ class BreakPoint:
             self._frag2 = frag
         else:
             raise ValueError(
-                "Attempted to set frag2 which does not match breakpoint.pos2."
+                f"Attempted to set frag2 to {frag}, which does not match "
+                f"breakpoint.pos2 of {self.pos2}."
             )
 
     def has_signs(self) -> bool:
@@ -194,24 +216,37 @@ class BreakPoint:
 
     def has_frags(self) -> bool:
         """Whether fragments information is available."""
-        return self.frag1 & self.frag2
+        return (self.frag1 is not None) & (self.frag2 is not None)
 
-    def connect(self, other) -> bool:
-        """Whether two breakpoints could be connected."""
-        if self.has_signs() and other.has_signs():
-            compat_signs = self.pos2.sign != other.pos1.sign
-        else:
-            compat_signs = True
+    def can_connect(
+        self, other: BreakPoint, min_intersect: int = 1000
+    ) -> bool:
+        """Whether two breakpoints could be connected (i.e. whether they could
+        share a fragment). This only checks for one-way connection: the second
+        fragment of self should overlap the first fragment of other."""
+        both_frags = self.has_frags() and other.has_frags()
+        both_signs = self.has_signs() and other.has_signs()
         compat_chroms = self.pos2.chrom == other.pos1.chrom
-        return compat_chroms & compat_signs
-
-    def overlap(self, other) -> int:
-        """Amount of overlap between two breakpoint's fragments"""
+        if not (both_frags and both_signs):
+            raise ValueError(
+                "Cannot connect breakpoints without fragment or sign information."
+            )
+        compat_coords = False
         if self.pos2.sign != other.pos1.sign:
-            return self.frag2.overlap(other.frag1)
-        return 0
+            if self.intersect(other) >= min_intersect:
+                compat_coords = True
 
-    def flip(self):
-        """Ensure pos1 and frag1 correspond to the smallest position."""
-        if self.pos1 > self.pos2:
-            self.pos1, self.pos2 = self.pos2, self.pos1
+        return compat_chroms & compat_coords
+
+    def intersect(self, other: BreakPoint) -> int:
+        """Amount of overlap between two breakpoint's fragments"""
+        if not (self.has_frags() and other.has_frags()):
+            raise ValueError(
+                "Cannot compute overlap if without fragment information."
+            )
+        # TODO: Could use signs to skip some comparisons
+        intersect = 0
+        for source in [self.frag1, self.frag2]:
+            for target in [other.frag1, other.frag2]:
+                intersect = max(intersect, source.intersect(target))
+        return intersect
