@@ -95,6 +95,12 @@ class Fragment:
 
     def split(self, rel_pos: int) -> Tuple[Fragment, Fragment]:
         """Split the fragment at a positiion relative from the start."""
+        if rel_pos < 0:
+            raise ValueError("Cannot split on negative coord")
+        if rel_pos > (self.end - self.start):
+            raise ValueError(
+                f"Cannot split {self} at position {rel_pos}: Beyond fragment end."
+            )
         left_frag, right_frag = copy.copy(self), copy.copy(self)
         left_frag.end = self.start + rel_pos
         right_frag.start = self.start + rel_pos
@@ -145,13 +151,12 @@ class BreakPoint:
         self.pos1, self.pos2 = pos1, pos2
 
     def __repr__(self) -> str:
+        p1 = self.pos1
+        p2 = self.pos2
         if self.has_frags():
-            p1 = self.frag1
-            p2 = self.frag2
-        else:
-            p1 = self.pos1
-            p2 = self.pos2
-        return f"{str(p1)}|{str(p2)}"
+            p1 = f"[{self.frag1}]{p1}"
+            p2 = f"{p2}[{self.frag2}]"
+        return f"{p1}|{p2}"
 
     @property
     def signs(self) -> Optional[Tuple[str, str]]:

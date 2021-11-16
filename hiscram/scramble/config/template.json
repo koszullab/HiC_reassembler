@@ -1,18 +1,24 @@
 {
     "Debug": {
-        "SV_freq": 0.00001,
+        "SV_freq": 0.1,
         "SV_types": {
             "INV": {
-                "prop": 0.5,
-                "mean_size": 8000,
-                "sd_size": 1000,
+                "prop": 0.4,
+                "mean_size": 3,
+                "sd_size": 2,
                 "code": 1
             },
             "DEL": {
-                "prop": 0.5,
-                "mean_size": 8000,
-                "sd_size": 1000,
+                "prop": 0.4,
+                "mean_size": 2,
+                "sd_size": 1,
                 "code": 2
+            },
+            "TRA": {
+                "prop": 0.2,
+                "mean_size": 3,
+                "sd_size": 2,
+                "code": 3
             }
         }
     },

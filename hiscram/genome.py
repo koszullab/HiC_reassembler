@@ -4,7 +4,7 @@ A number of methods allow to introduce structural variation in the genome, and r
 the altered sequence.
 """
 
-from typing import List, Dict, Iterator
+from typing import List, Dict, Iterator, Tuple
 import pyfastx
 import numpy as np
 from hiscram.regions import BreakPoint, Fragment, Position
@@ -16,19 +16,42 @@ class Chromosome:
 
     def __init__(self, name: str, length: int):
         self.name = name
+        # list rather than np.array, due to better insert/append performance
         self.frags = [Fragment(self.name, 0, length)]
         self.breakpoints = []
 
     def __len__(self):
         """Returns the total chromosome length."""
-        return sum(len(frag) for frag in self.frags)
+        return self.boundaries[-1]
 
     @property
     def boundaries(self):
         """Get array of fragment boundaries, from the start to the end
         of the chromosome."""
-        positions = np.cumsum([0] + [len(frag) for frag in self.frags])
-        return positions
+        # Memorize whether fragments have changed to avoid recomputing the same
+        # values.
+        frags_hash = hash(tuple(self.frags))
+        try:
+            if self._frags_hash == frags_hash:
+                changed = False
+            else:
+                changed = True
+        # On first access, required attrs are generated
+        except AttributeError:
+            self._frags_hash = frags_hash
+            changed = True
+        if changed:
+            self._bds = np.cumsum([0] + [len(frag) for frag in self.frags])
+        return self._bds
+
+    def get_frag_bounds(self, coord: int) -> Tuple[int, Tuple[int, int]]:
+        """Returns the index and boundaries of the fragment in which input
+        coordinate falls. Return format is (id, start, end)"""
+        bounds = self.boundaries
+        if coord >= bounds[-1]:
+            raise ValueError(f"Coordinate out of bounds: {self.name}:{coord}")
+        frag_id = max(0, np.searchsorted(bounds, coord, side="right") - 1)
+        return (frag_id, (bounds[frag_id], bounds[frag_id + 1]))
 
     def clean_frags(self):
         """Purge 0-length fragments."""
@@ -37,81 +60,88 @@ class Chromosome:
     def insert(self, position: int, frag_ins: Fragment):
         """Updates fragments by inserting a sequence in the chromosome."""
         bounds = self.boundaries
-        frag_id = max(np.searchsorted(bounds, position, side="right") - 1, 0)
+        if position == len(self):
+            frag_id = len(bounds)
+        else:
+            frag_id, (frag_start, _) = self.get_frag_bounds(position)
         if position in bounds:
             # Insertion right between two fragments, add a fragment.
             self.frags.insert(frag_id, frag_ins)
         else:
             # Insertion inside a fragment, split it and add fragment in between.
             frag_l, frag_r = self.frags.pop(frag_id).split(
-                position - bounds[frag_id]
+                position - frag_start
             )
             for frag in [frag_r, frag_ins, frag_l]:
                 self.frags.insert(frag_id, frag)
 
     def invert(self, start: int, end: int):
         """Updates fragments by inverting a portion of the chromosome."""
-        bounds = self.boundaries
-        frag_start = max(np.searchsorted(bounds, start, side="right") - 1, 0)
-        frag_end = max(np.searchsorted(bounds, end, side="left") - 1, 0)
-        start_dist = start - bounds[frag_start]
-        end_dist = end - bounds[frag_end]
+        s_frag_id, (s_frag_start, _) = self.get_frag_bounds(start)
+        e_frag_id, (_, e_frag_end) = self.get_frag_bounds(end - 1)
+        start_dist = start - s_frag_start
+        end_dist = e_frag_end - end
 
         # Inversion inside a single frag.: Split it in 3 and invert middle.
-        if frag_end == frag_start:
+        if s_frag_id == e_frag_id:
             inv_size = end - start
-            frag_l, frag_mr = self.frags.pop(frag_start).split(start_dist)
+            frag_l, frag_mr = self.frags.pop(s_frag_id).split(start_dist)
             frag_m, frag_r = frag_mr.split(inv_size)
             frag_m.flip()
             for frag in [frag_r, frag_m, frag_l]:
-                self.frags.insert(frag_start, frag)
+                self.frags.insert(s_frag_id, frag)
         else:
             # Split fragment where inversion starts and flip right part.
-            start_l, start_r = self.frags.pop(frag_start).split(start_dist)
+            start_l, start_r = self.frags.pop(s_frag_id).split(start_dist)
             start_r.flip()
             for frag in [start_r, start_l]:
-                self.frags.insert(frag_end, frag)
+                self.frags.insert(e_frag_id, frag)
             # If fragments are entirely in the inversion, invert and flip them.
-            for frag_id in range(frag_start + 1, frag_end):
+            for frag_id in range(s_frag_id + 1, e_frag_id):
                 inv_frag = self.frags.pop(frag_id)
                 inv_frag.flip()
                 self.frags.insert(frag_id)
 
             # Split fragment where inversion ends and flip left part.
-            end_l, end_r = self.frags.pop(frag_end).split(end_dist)
+            end_l, end_r = self.frags.pop(e_frag_id).split(end_dist)
             end_l.flip()
             for frag in [end_r, end_l]:
-                self.frags.insert(frag_end, frag)
+                self.frags.insert(e_frag_id, frag)
         self.clean_frags()
 
     def delete(self, start: int, end: int):
         """Updates fragments by deleting a portion of the chromosome."""
-        bounds = self.boundaries
-        frag_start = max(np.searchsorted(bounds, start) - 1, 0)
-        frag_end = max(np.searchsorted(bounds, end) - 1, 0)
+        s_frag_id, (s_frag_start, _) = self.get_frag_bounds(start)
+        e_frag_id, (_, e_frag_end) = self.get_frag_bounds(end - 1)
         del_size = end - start
-        start_dist = start - self.frags[frag_start].start
+        start_dist = start - s_frag_start
+        end_dist = e_frag_end - end
         # Deletion contained in a single fragment: split it and trim right part
-        if frag_end == frag_start:
-            start_l, start_r = self.frags.pop(frag_start).split(start_dist)
+        if e_frag_id == s_frag_id:
+            start_l, start_r = self.frags.pop(s_frag_id).split(start_dist)
             start_r.start += del_size
             for frag in [start_r, start_l]:
-                self.frags.insert(frag_start, frag)
+                self.frags.insert(s_frag_id, frag)
         # Deletion spans multiple fragments
         else:
             # Deletion starts in frag, end gets trimmed
-            self.frags[frag_start].end = start
+            self.frags[s_frag_id].end = (
+                self.frags[s_frag_id].start + start_dist
+            )
 
             # Fragments contained in deletion disappear
-            for frag_id in range(frag_start + 1, frag_end):
+            for frag_id in range(s_frag_id + 1, e_frag_id):
+                curr_start = self.frags[frag_id].start
                 if self.frags[frag_id].end < end:
-                    self.frags[frag_id].end = start
+                    self.frags[frag_id].end = curr_start
                 if self.frags[frag_id].start < end:
-                    self.frags[frag_id].start = start
+                    self.frags[frag_id].start = curr_start
 
+            from copy import copy
+
+            ori_end = copy(self.frags[e_frag_id])
             # Deletion ends in frag, trim left side
-            self.frags[frag_end].start = end
-        self.clean_frags()
+            self.frags[e_frag_id].start = self.frags[e_frag_id].end - end_dist
 
     def get_seq(self, fasta: pyfastx.Fasta) -> Iterator[str]:
         """Retrieve the chromosome sequence, as a generator yielding
@@ -183,6 +213,21 @@ class Genome:
         self.chroms[source_region.chrom].delete(
             source_region.start, source_region.end
         )
+
+    def duplicate(
+        self,
+        target_chrom: str,
+        target_pos: int,
+        source_region: Fragment,
+        invert: bool = False,
+    ):
+        """Copy a genomic segment to another genomic position."""
+        frag_size = source_region.end - source_region.start
+        self.chroms[target_chrom].insert(target_pos, source_region)
+        if invert:
+            self.chroms[target_chrom].invert(
+                target_pos, target_pos + frag_size
+            )
 
     def get_seq(self) -> Dict[str, Iterator[str]]:
         """Retrieve the genomic sequence of each chromosome. Each chromosome's

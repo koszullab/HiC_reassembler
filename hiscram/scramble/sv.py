@@ -4,7 +4,7 @@ Utilities to generate work with genomes.
 import sys
 import random
 import json
-from typing import Dict, Union, Any
+from typing import Dict, Union, Any, IO
 import numpy as np
 import pyfastx
 from typing import Optional, Tuple
@@ -82,41 +82,53 @@ class Mixer(object):
 
         return config[profile]
 
-    def generate_sv(self):
+    def generate_sv(self) -> Dict[str, int]:
         """
         Generates random structural variations, based on the parameters loaded
-        from the instance's config file.
+        from the instance's config file. Returns a dictionary describing the
+        number of each SV type introduced.
         """
         # Relative abundance of each event type (placeholder values)
-        # rel_abun = {"INV": 8, "DEL": 400, "DUP": 60, "INS": 160, "CNV": 350}
         n_sv = round(len(self.genome) * self.config["SV_freq"])
         sv_count = 0
         # multiply proportion of each SV type by total desired SV freq to
         # get total number of events of each type.
         n_events = {
-            name: np.floor(n_sv * sv["prop"])
+            name: round(n_sv * sv["prop"])
             for name, sv in self.config["SV_types"].items()
         }
-
+        if n_sv == 0:
+            return n_events
         print(
             f"Generating {', '.join([str(num) + ' ' + sv for sv, num in n_events.items()])}"
         )
-        for event_type in np.random.choice(n_events.keys(), n_events.values()):
+        for event_type in np.random.choice(
+            list(n_events.keys()),
+            p=np.array(list(n_events.values())) / n_sv,
+            size=n_sv,
+        ):
             event_cfg = self.config["SV_types"][event_type]
             # Start position is random and length is picked from a normal
             # distribution centered around mean length.
-            size = abs(
-                np.random.normal(
-                    loc=event_cfg["mean_size"], scale=event_cfg["sd_size"]
-                )
+            size = np.random.normal(
+                loc=event_cfg["mean_size"], scale=event_cfg["sd_size"]
             )
+            size = max(1, int(abs(size)))
             region = get_random_region(self.genome, size)
-            target_pos = get_random_region(self.genome, 1)
-            # Make sure the inversion does not go beyond chromosome.
-            end = min(size, end)
+            # Some SVs involve 2 regions, other a single one
+            if event_type in ["TRA", "INS", "DUP"]:
+                target_pos = get_random_region(self.genome, 1)
+            else:
+                target_pos = None
+            # Logging what SVs were introduced
             self.svs.append((event_type, region, target_pos))
             if event_type == "DEL":
                 self.genome.delete(region.chrom, region.start, region.end)
+            elif event_type == "DUP":
+                inv = np.random.choice([False, True])
+                self.genome.duplicate(
+                    target_pos.chrom, target_pos.start, region, inv
+                )
             elif event_type == "INS":
                 self.genome.insert(target_pos.chrom, target_pos.start, region)
             elif event_type == "INV":
@@ -127,9 +139,35 @@ class Mixer(object):
                     target_pos.chrom, target_pos.start, region, inv
                 )
             else:
-                raise NotImplementedError("Unknown SV type.")
+                raise NotImplementedError(f"Unknown SV type: {event_type}.")
 
             sv_count += 1
+        return n_events
+
+    def write_genome(self, fasta_out: IO):
+        """Write the whole genome sequence in fasta format to a file-like object"""
+        seqs = self.genome.get_seq()
+        for chrom, seq in seqs.items():
+            fasta_out.write(f">{chrom}\n")
+            for frag in seq:
+                fasta_out.write(frag)
+            fasta_out.write("\n")
+
+    def write_breakpoints(self, bedpe_out: IO):
+        """Write all breakpoints in BEDPE format to a file-like object."""
+        bps = self.genome.get_breakpoints()
+        # BEDPE format is tab-separated text files with the following columns:
+        # chrom1, start1, end1, chrom2, start2, end2, name, score, strand1, strand2
+        # Empty columns are represented using '.'
+        format_pos = lambda p: "\t".join(map(str, [p.chrom, p.coord, p.coord]))
+        for bp in bps:
+            p1 = bp.pos1
+            p2 = bp.pos2
+            s1 = "+" if p1.sign else "-"
+            s2 = "+" if p2.sign else "-"
+            bedpe_out.write(
+                f"{format_pos(p1)}\t{format_pos(p2)}\t.\t.\t{s1}\t{s2}\n"
+            )
 
 
 def get_random_region(genome: Genome, region_size: int = 1000) -> Fragment:
@@ -140,11 +178,15 @@ def get_random_region(genome: Genome, region_size: int = 1000) -> Fragment:
         for name, size in genome.chromsizes.items()
         if size > region_size
     }
+    if len(chrom_sizes) == 0:
+        raise ValueError(
+            "No chromosome is longer than region_size. Cannot pick a region."
+        )
 
     # Pick a random region of slice_size bp in a random chromosome and write it
     picked_chrom = random.choices(
-        chrom_sizes.keys(),
-        weights=chrom_sizes.values(),
+        list(chrom_sizes.keys()),
+        weights=list(chrom_sizes.values()),
         k=1,
     )[0]
     start_slice = int(
@@ -160,11 +202,11 @@ def get_random_region(genome: Genome, region_size: int = 1000) -> Fragment:
 def save_genome_slice(
     fasta: pyfastx.Fasta,
     region: Fragment,
-    out_path: str,
+    out_fasta: IO,
 ):
     """
     Given an input fasta file, slice a random region of a random chromosome and
-    save it into a new fasta file.
+    save it in fasta format to a file.
 
     Parameters
     ----------
@@ -172,12 +214,11 @@ def save_genome_slice(
         Genome from which to take the slice.
     region:
         Coordinates of the region to extract, in basepairs.
-    out_path:
-        Coordinates of the region to extract.
+    out_fasta:
+        File object where to write the region in fasta format.
 
     """
 
-    with open(out_path, "w") as sub_handle:
-        seq = fasta[region.chrom]
-        sliced_seq = seq[region.start : region.end]
-        sub_handle.write(f">{region[0]}\n{sliced_seq}\n")
+    seq = fasta[region.chrom]
+    sliced_seq = seq[region.start : region.end]
+    out_fasta.write(f">{region[0]}\n{sliced_seq}\n")
