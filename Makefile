@@ -11,3 +11,6 @@ reassemble: clean
 	
 train: 
 	@python ./scripts/train.py
+
+scramble: 
+	@hiscram scramble test_data/seq.fa out_scrambles -1 test_data/sample.reads_for.fastq.gz -2 test_data/sample.reads_rev.fastq.gz --profile Debug
