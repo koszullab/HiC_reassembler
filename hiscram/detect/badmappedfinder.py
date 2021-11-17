@@ -1,3 +1,5 @@
+"""Identify regions of poor mappability to reduce false positive detections.
+"""
 import numpy as np
 import pysam as ps
 
@@ -13,7 +15,7 @@ import detector.bam_functions as bm
 
 class BadMappedFinder(object):
     """
-    Handles to find reads which are not correctly mapped. Sometimes, positions 
+    Handles to find reads which are not correctly mapped. Sometimes, positions
     with these elements can be considered as SV by the bamdetector. It is why it
     is important to have this class. It is based on a SVC.
 
@@ -25,31 +27,38 @@ class BadMappedFinder(object):
         reads near this position.
     """
 
-    def __init__(self, size_win : int =4):
+    def __init__(self, size_win: int = 4):
 
         self.load_data()
         self.size_win = size_win
         self.create_model()
 
-    def load_data(self, training_path : str ="data/training/mapping"):
+    def load_data(self, training_path: str = "data/training/mapping"):
         """
         It loads training set in order to train the model.
         """
 
-        array_badly_mapped = np.load(join(training_path, "array_badly_mapped.npy"))
+        array_badly_mapped = np.load(
+            join(training_path, "array_badly_mapped.npy")
+        )
         array_SV = np.load(join(training_path, "array_SV.npy"))
 
         labels_SV = np.zeros(len(array_SV))
-        labels_badly_mapped= np.ones(len(array_badly_mapped))
+        labels_badly_mapped = np.ones(len(array_badly_mapped))
 
-        features = np.concatenate((array_SV, array_badly_mapped)).reshape((-1, 2))
+        features = np.concatenate((array_SV, array_badly_mapped)).reshape(
+            (-1, 2)
+        )
         labels = np.concatenate((labels_SV, labels_badly_mapped))
 
-        self.X_train, self.X_valid, self.y_train, self.y_valid = train_test_split(
-            features, labels
-        )
+        (
+            self.X_train,
+            self.X_valid,
+            self.y_train,
+            self.y_valid,
+        ) = train_test_split(features, labels)
 
-    def create_model(self, C : float =1):
+    def create_model(self, C: float = 1):
         """
         Create SVC to detect badly mapped elements.
         """
@@ -59,29 +68,40 @@ class BadMappedFinder(object):
         self.classifier.fit(self.X_train, self.y_train)
 
         print("Training Recall Score:")
-        print(recall_score(self.y_train, self.classifier.predict(self.X_train)))
+        print(
+            recall_score(self.y_train, self.classifier.predict(self.X_train))
+        )
         print("Training Precision Score:")
-        print(precision_score(self.y_train, self.classifier.predict(self.X_train)))
+        print(
+            precision_score(
+                self.y_train, self.classifier.predict(self.X_train)
+            )
+        )
 
         print("Validation Recall Score:")
-        print(recall_score(self.y_valid, self.classifier.predict(self.X_valid)))
+        print(
+            recall_score(self.y_valid, self.classifier.predict(self.X_valid))
+        )
         print("Validation Precision Score:")
-        print(precision_score(self.y_valid, self.classifier.predict(self.X_valid)))
+        print(
+            precision_score(
+                self.y_valid, self.classifier.predict(self.X_valid)
+            )
+        )
 
-
-    def predict(self, coord : int, bam_file : str, chrom_id :str) -> int:
+    def predict(self, coord: int, bam_file: str, chrom_id: str) -> int:
         """
-        Detect badly mapped elements for one coord. It returns the label 
+        Detect badly mapped elements for one coord. It returns the label
         detected by the model.
 
         Parameters
         --------
         coord: int
             Coordinate of the coord where we want to make the detection.
-        
+
         bam_file: str
             Filename of the bam files.
-        
+
         chrom_id: str
             Name of the chromosome where we will do the detection.
         """
@@ -110,7 +130,6 @@ class BadMappedFinder(object):
         array_mapQ = np.array([mapQ_ratio, nb_read]).reshape((-1, 2))
         map_prediction = self.classifier.predict(array_mapQ)
 
-
         return map_prediction[0]
 
     def save(self):
@@ -118,7 +137,8 @@ class BadMappedFinder(object):
         Save BadMappedFinder to joblib format.
         """
         joblib.dump(
-            self.classifier, "data/models/badlymappedfinder/badlymappedfinder.joblib",
+            self.classifier,
+            "data/models/badlymappedfinder/badlymappedfinder.joblib",
         )
 
     def load(self):

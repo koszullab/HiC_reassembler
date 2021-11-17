@@ -1,0 +1,160 @@
+import copy
+import tempfile
+import pytest
+import pyfastx
+import hiscram.genome as hg
+from hiscram.regions import Fragment
+
+
+@pytest.fixture
+def fasta():
+    fname = tempfile.NamedTemporaryFile(delete=False).name
+    with open(fname, "w") as fh:
+        fh.write(">chr0\nAACCCGGGTT\n")
+    yield pyfastx.Fasta(fname)
+
+
+@pytest.fixture
+def chrom():
+    yield hg.Chromosome("chr0", 10)
+
+
+@pytest.fixture
+def genome():
+    fname = tempfile.NamedTemporaryFile(delete=False).name
+    with open(fname, "w") as fh:
+        fh.write(">chr1\nAACCCAAACC\n")
+        fh.write(">chr2\nGTGTGT\n")
+    yield hg.Genome(pyfastx.Fasta(fname))
+
+
+def test_chrom_len(chrom):
+    assert len(chrom) == 10
+
+
+def test_chrom_neg_coord():
+    with pytest.raises(ValueError):
+        hg.Chromosome("chr0", -10)
+
+
+def test_chrom_boundaries(chrom):
+    assert list(chrom.boundaries) == [0, 10]
+
+
+def test_chrom_clean_frags(chrom):
+    chrom.frags.append(Fragment("chr0", 10, 10))
+    assert len(chrom.frags) == 2
+    chrom.clean_frags()
+    assert len(chrom.frags) == 1
+
+
+def test_chrom_insert_middle(chrom):
+    """Insert sequence in the middle of a fragment"""
+    chrom.insert(2, Fragment("chr0", 3, 5))
+    assert len(chrom.frags) == 3
+    assert chrom.boundaries[1] == 2
+    assert chrom.boundaries[2] == 4  # 10 + 11
+
+
+def test_chrom_insert_left(chrom):
+    """Prepend sequence at the start of chromosome"""
+    chrom.insert(0, Fragment("chr0", 5, 9))
+    assert len(chrom.frags) == 2
+    assert list(chrom.boundaries) == [0, 4, 14]
+
+
+def test_chrom_insert_right(chrom):
+    """Append sequence at the end of chromosome"""
+    chrom.insert(10, Fragment("chr0", 5, 9))
+    assert len(chrom.frags) == 2
+    assert list(chrom.boundaries) == [0, 10, 14]
+
+
+def test_chrom_invert(chrom):
+    """Inverting end of chromosome"""
+    chrom.invert(5, 6)
+    assert len(chrom.frags) == 3
+    assert [fr.is_reverse for fr in chrom.frags] == [False, True, False]
+    assert list(chrom.boundaries) == [0, 5, 6, 10]
+
+
+def test_chrom_invert_left(chrom):
+    """Inverting start of chromosome"""
+    chrom.invert(0, 3)
+    assert len(chrom.frags) == 2
+    assert [fr.is_reverse for fr in chrom.frags] == [True, False]
+    assert list(chrom.boundaries) == [0, 3, 10]
+
+
+def test_chrom_invert_multi(chrom):
+    """Inversion spanning multiple fragments."""
+    # Break up chrom into frags via short deletions
+    chrom.delete(1, 3)
+    chrom.delete(2, 4)
+    chrom.delete(4, 5)
+    assert all(chrom.boundaries == [0, 1, 2, 4, 5])
+    # inverting first 3 fragments: 0, 1, 2, 3 -> 2, 1, 0, 3
+    expected_frags = copy.deepcopy(chrom.frags)
+    expected_frags[:3] = expected_frags[:3][::-1]
+    for i in range(3):
+        expected_frags[i].flip()
+    chrom.invert(0, 4)
+    for exp, obs in zip(expected_frags, chrom.frags):
+        assert exp == obs
+
+
+def test_chrom_delete(chrom):
+    chrom.delete(2, 8)
+    assert list(chrom.boundaries) == [0, 2, 4]
+
+
+def test_chrom_get_seq(chrom, fasta):
+    whole_chrom = [frag for frag in chrom.get_seq(fasta)]
+    assert whole_chrom[0] == "AACCCGGGTT"
+
+
+def test_chrom_get_seq_inv(chrom, fasta):
+    chrom.invert(0, 3)
+    frags_seq = [frag for frag in chrom.get_seq(fasta)]
+    assert frags_seq == ["GTT", "CCGGGTT"]
+
+
+def test_genome(genome):
+    assert list(genome.chroms.keys()) == ["chr1", "chr2"]
+    assert len(genome.chroms["chr1"]) == 10
+    assert len(genome.chroms["chr2"]) == 6
+
+
+def test_genome_insert(genome):
+    genome.insert("chr1", 2, Fragment("chr2", 1, 4))
+    assert len(genome.chroms["chr1"].frags) == 3
+
+
+def test_genome_translocate(genome):
+    genome.translocate("chr1", 3, Fragment("chr2", 0, 4))
+    seqs = genome.get_seq()
+    assert [fr for fr in seqs["chr1"]] == ["AAC", "GTGT", "CCAAACC"]
+
+
+def test_genome_get_seq(genome):
+    seqs = genome.get_seq()
+    for chrom in genome.chroms.keys():
+        assert len("".join(list(seqs[chrom]))) == len(genome.chroms[chrom])
+
+
+def test_genome_get_breakpoints(genome):
+    bps = genome.get_breakpoints()
+    assert len(bps) == 0
+    # genome.translocate("chr1", 3, Fragment("chr2", 0, 4))
+    genome.delete("chr1", 4, 6)
+    bps = genome.get_breakpoints()
+    assert len(bps) == 1
+
+
+def test_genome_breakpoints_connect(genome):
+    genome.translocate("chr2", 2, Fragment("chr1", 5, 7), invert=True)
+    bps = genome.get_breakpoints()
+    assert [bp.pos1.chrom for bp in bps] == ["chr1", "chr2", "chr1"]
+    assert [bp.pos1.coord for bp in bps] == [5, 2, 7]
+    assert bps[2].can_connect(bps[1], min_intersect=2) == True
+    assert len(bps) == 3
