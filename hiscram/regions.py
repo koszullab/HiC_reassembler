@@ -42,6 +42,7 @@ class Position:
         return not self.sign is None
 
 
+@dataclass
 class Fragment:
     """A region representing a DNA sequence. Coordinates are 0-based and left-open.
 
@@ -56,21 +57,18 @@ class Fragment:
     end: Coordinate where the fragment ends (largest).
     """
 
-    def __init__(
+    chrom: str
+    start: int
+    end: int
+    is_reverse: bool = field(default=False)
+
+    def __post_init__(
         self,
-        chrom: str,
-        start: int,
-        end: int,
-        is_reverse: bool = False,
     ):
-        if end < start:
+        if self.end < self.start:
             raise ValueError("end cannot be smaller than start.")
-        if start < 0:
+        if self.start < 0:
             raise ValueError("Coordinates cannot be negative.")
-        self.chrom = chrom
-        self.start = start
-        self.end = end
-        self.is_reverse = is_reverse
 
     def __len__(self) -> int:
         return self.end - self.start
@@ -78,6 +76,9 @@ class Fragment:
     def __repr__(self) -> str:
         sign = "-" if self.is_reverse else "+"
         return f"{self.chrom}:{self.start}-{self.end}:{sign}"
+
+    def __hash__(self):
+        return hash(str(self))
 
     def middle(self) -> int:
         return (self.start + self.end) // 2
