@@ -39,7 +39,7 @@
             }
         }
     },
-    "Scaffolding": {
+    "Scaff": {
         "SV_freq": 0.00001,
         "SV_types": {
             "INV": {
@@ -95,15 +95,8 @@
                 "sd_size": 200,
                 "code": 4
             },
-            "CNV": {
-                "prop": 0.35,
-                "mean_size": 2000,
-                "sd_size": 200,
-                "number": 3,
-                "code": 5
-            },
             "TRA": {
-                "prop": 0,
+                "prop": 0.35,
                 "mean_size": 2000,
                 "sd_size": 200,
                 "dist": 4000,

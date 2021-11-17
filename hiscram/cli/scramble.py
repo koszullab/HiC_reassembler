@@ -43,13 +43,21 @@ import click
     type=str,
     help="SV size and frequency profile to use. Can be one of: Yeast, Human, Debug",
 )
+@click.option(
+    "--quiet",
+    "-q",
+    is_flag=True,
+    help="Hide progress",
+)
 @click.argument("fasta", type=click.Path(exists=True, path_type=pathlib.Path))
 @click.argument(
     "outdir", type=click.Path(exists=False, path_type=pathlib.Path)
 )
-def run_scrambles(fasta, outdir, reads1, reads2, binsize, profile, tmpdir):
+def run_scrambles(
+    fasta, outdir, reads1, reads2, binsize, profile, tmpdir, quiet
+):
     """
-    This is the orchestrator function that handles the end-to-end pipeline. For
+    Orchestrator command handling the end-to-end genome scrambling pipeline. For
     each scramble run, it will:
     0. Select a random region of a random chromosome
     1. Edit the selected region to add SV
@@ -66,7 +74,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, profile, tmpdir):
 
     # Generate random structural variations and apply them to the genome
     mixer = sv.Mixer(str(fasta), config_profile=profile)
-    mixer.generate_sv()
+    mixer.generate_sv(progress=not quiet)
     mod_genome = str(outdir / "mod_genome.fa")
     with open(mod_genome, "w") as fa:
         mixer.write_genome(fa)
@@ -84,6 +92,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, profile, tmpdir):
         threads=8,
         enzyme=binsize,
         mat_fmt="cool",
+        force=True,
     )
 
 

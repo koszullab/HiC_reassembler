@@ -1,13 +1,12 @@
 """
 Utilities to generate work with genomes.
 """
-import sys
 import random
 import json
-from typing import Dict, Union, Any, IO
+from typing import Dict, Optional, Any, IO
 import numpy as np
 import pyfastx
-from typing import Optional, Tuple
+from tqdm import tqdm
 from hiscram import SCRAMBLE_CONFIG_PATH
 from hiscram.genome import Genome
 from hiscram.regions import Fragment
@@ -82,7 +81,7 @@ class Mixer(object):
 
         return config[profile]
 
-    def generate_sv(self) -> Dict[str, int]:
+    def generate_sv(self, progress: bool = True) -> Dict[str, int]:
         """
         Generates random structural variations, based on the parameters loaded
         from the instance's config file. Returns a dictionary describing the
@@ -99,14 +98,16 @@ class Mixer(object):
         }
         if n_sv == 0:
             return n_events
-        print(
-            f"Generating {', '.join([str(num) + ' ' + sv for sv, num in n_events.items()])}"
-        )
-        for event_type in np.random.choice(
+        if progress:
+            print(
+                f"Generating {', '.join([str(num) + ' ' + sv for sv, num in n_events.items()])}"
+            )
+        sv_list = np.random.choice(
             list(n_events.keys()),
             p=np.array(list(n_events.values())) / n_sv,
             size=n_sv,
-        ):
+        )
+        for event_type in tqdm(sv_list, disable=not progress):
             event_cfg = self.config["SV_types"][event_type]
             # Start position is random and length is picked from a normal
             # distribution centered around mean length.

@@ -151,11 +151,14 @@ class Chromosome:
     def get_seq(self, fasta: pyfastx.Fasta) -> Iterator[str]:
         """Retrieve the chromosome sequence, as a generator yielding
         the sequence by fragment."""
+        self.clean_frags()
         for frag in self.frags:
             strand = "-" if frag.is_reverse else "+"
             # Note: fasta.fetch is 1-based...
             yield fasta.fetch(
-                frag.chrom, (int(frag.start + 1), (frag.end)), strand=strand
+                frag.chrom,
+                (int(frag.start + 1), (frag.end)),
+                strand=strand,
             )
 
     def get_breakpoints(self) -> Iterator[BreakPoint]:
