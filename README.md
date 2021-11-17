@@ -1,29 +1,25 @@
 # Hi-C reassembler
 
-This repo contains a program to detect SVs on scrambled Hi-C maps with machine learning methods and reassemble the maps with a bruteforce method. It handles the following structural variations:
+Toolkit for the reassembly of structural variation (SV) in genomes using Hi-C contacts. The goal of this project is to automatically fix large inconsistencies between the reference genome and sample of interest, for example in the case of cancer cell lines or misassembled genomes.
 
-* Deletion: Chunk of sequence removed
-* Insertion: New chunk of sequence introduced
-* Inversion(short): Chunk of sequence flipped
-* Translocation: Chunk of sequence moved from one place to another
-
-These alterations can be happen sequentially and be superimposed on each other, which result in "complex events". These programs allow to reassemble this complex events after they have been detected.
-
-The Hi-C map must be generated with the aligner "bwa".
+This project is separated into 3 submodules:
+* scramble: Simulating structural variants and constructing the associated Hi-C map, this is mainly used to generate training data.
+* detect: Find the location of candidate breakpoints using Hi-C contact and refine the location using read alignments.
+* reassemble: Edit the genome based on detected breakpoints to recover the sequence that matches Hi-C contacts.
 
 ## Setup
 
-To install python dependencies, you can use the requirements.txt file as follows:
+To work on this project, `git clone` the repository, `cd` into it and install it with:
 
 ```bash
-pip install --user -r requirements.txt
+pip install -e .
 ```
 
-To setup install the project as a local package, run:
+## Data structures used
 
-```bash
-pip install --user -e .
-```
+Throughout the different submodules, the genome is represented as a collection of chromosomes. Each chromosome contains Fragments, which point to a reference sequence. Introducing SVs
+
+![](docs/assets/chromosome_diagram.svg)
 
 ## Training
 

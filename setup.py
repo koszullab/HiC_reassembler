@@ -9,8 +9,9 @@ from setuptools import setup, find_packages
 with open("hiscram/__init__.py", "r") as init:
     init_conts = init.read()
     vers_regex = r"^__version__ = ['\"]([^'\"]*)['\"]"
-    VERSION = re.search(vers_regex, init_conts, re.MULTILINE)
-    if not VERSION:
+    try:
+        VERSION = re.search(vers_regex, init_conts, re.MULTILINE)[1]
+    except TypeError:
         raise RuntimeError(f"Cannot find version string in __init__.py")
 
 DESCRIPTION = __doc__.strip("\n")
