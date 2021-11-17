@@ -1,3 +1,4 @@
+import copy
 import tempfile
 import pytest
 import pyfastx
@@ -48,6 +49,7 @@ def test_chrom_clean_frags(chrom):
 
 
 def test_chrom_insert_middle(chrom):
+    """Insert sequence in the middle of a fragment"""
     chrom.insert(2, Fragment("chr0", 3, 5))
     assert len(chrom.frags) == 3
     assert chrom.boundaries[1] == 2
@@ -55,18 +57,21 @@ def test_chrom_insert_middle(chrom):
 
 
 def test_chrom_insert_left(chrom):
+    """Prepend sequence at the start of chromosome"""
     chrom.insert(0, Fragment("chr0", 5, 9))
     assert len(chrom.frags) == 2
     assert list(chrom.boundaries) == [0, 4, 14]
 
 
 def test_chrom_insert_right(chrom):
+    """Append sequence at the end of chromosome"""
     chrom.insert(10, Fragment("chr0", 5, 9))
     assert len(chrom.frags) == 2
     assert list(chrom.boundaries) == [0, 10, 14]
 
 
 def test_chrom_invert(chrom):
+    """Inverting end of chromosome"""
     chrom.invert(5, 6)
     assert len(chrom.frags) == 3
     assert [fr.is_reverse for fr in chrom.frags] == [False, True, False]
@@ -74,10 +79,28 @@ def test_chrom_invert(chrom):
 
 
 def test_chrom_invert_left(chrom):
+    """Inverting start of chromosome"""
     chrom.invert(0, 3)
     assert len(chrom.frags) == 2
     assert [fr.is_reverse for fr in chrom.frags] == [True, False]
     assert list(chrom.boundaries) == [0, 3, 10]
+
+
+def test_chrom_invert_multi(chrom):
+    """Inversion spanning multiple fragments."""
+    # Break up chrom into frags via short deletions
+    chrom.delete(1, 3)
+    chrom.delete(2, 4)
+    chrom.delete(4, 5)
+    assert all(chrom.boundaries == [0, 1, 2, 4, 5])
+    # inverting first 3 fragments: 0, 1, 2, 3 -> 2, 1, 0, 3
+    expected_frags = copy.deepcopy(chrom.frags)
+    expected_frags[:3] = expected_frags[:3][::-1]
+    for i in range(3):
+        expected_frags[i].flip()
+    chrom.invert(0, 4)
+    for exp, obs in zip(expected_frags, chrom.frags):
+        assert exp == obs
 
 
 def test_chrom_delete(chrom):

@@ -46,7 +46,7 @@ class Chromosome:
 
     def get_frag_bounds(self, coord: int) -> Tuple[int, Tuple[int, int]]:
         """Returns the index and boundaries of the fragment in which input
-        coordinate falls. Return format is (id, start, end)"""
+        coordinate falls. Return format is (id, (start, end))."""
         bounds = self.boundaries
         if coord >= bounds[-1]:
             raise ValueError(f"Coordinate out of bounds: {self.name}:{coord}")
@@ -60,6 +60,7 @@ class Chromosome:
     def insert(self, position: int, frag_ins: Fragment):
         """Updates fragments by inserting a sequence in the chromosome."""
         bounds = self.boundaries
+        # Append after the end of chromosome
         if position == len(self):
             frag_id = len(bounds)
         else:
@@ -76,41 +77,45 @@ class Chromosome:
                 self.frags.insert(frag_id, frag)
 
     def invert(self, start: int, end: int):
-        """Updates fragments by inverting a portion of the chromosome."""
+        """Updates fragments by inverting a portion of the chromosome.
+        The interval is 0-based and right open [start;end[."""
         s_frag_id, (s_frag_start, _) = self.get_frag_bounds(start)
-        e_frag_id, (_, e_frag_end) = self.get_frag_bounds(end - 1)
-        start_dist = start - s_frag_start
-        end_dist = e_frag_end - end
+        e_frag_id, (e_frag_start, _) = self.get_frag_bounds(end - 1)
+        s_start_dist = start - s_frag_start
+        e_start_dist = end - e_frag_start
 
         # Inversion inside a single frag.: Split it in 3 and invert middle.
         if s_frag_id == e_frag_id:
             inv_size = end - start
-            frag_l, frag_mr = self.frags.pop(s_frag_id).split(start_dist)
+            frag_l, frag_mr = self.frags.pop(s_frag_id).split(s_start_dist)
             frag_m, frag_r = frag_mr.split(inv_size)
             frag_m.flip()
             for frag in [frag_r, frag_m, frag_l]:
                 self.frags.insert(s_frag_id, frag)
         else:
-            # Split fragment where inversion starts and flip right part.
-            start_l, start_r = self.frags.pop(s_frag_id).split(start_dist)
-            start_r.flip()
+            # Split fragment where inversion starts, we'll flip the right part.
+            start_l, start_r = self.frags.pop(s_frag_id).split(s_start_dist)
             for frag in [start_r, start_l]:
-                self.frags.insert(e_frag_id, frag)
-            # If fragments are entirely in the inversion, invert and flip them.
-            for frag_id in range(s_frag_id + 1, e_frag_id):
-                inv_frag = self.frags.pop(frag_id)
-                inv_frag.flip()
-                self.frags.insert(frag_id)
-
-            # Split fragment where inversion ends and flip left part.
-            end_l, end_r = self.frags.pop(e_frag_id).split(end_dist)
-            end_l.flip()
+                self.frags.insert(s_frag_id, frag)
+            s_frag_id += 1
+            e_frag_id += 1
+            # Split fragment where inversion ends we'll flip the left part.
+            end_l, end_r = self.frags.pop(e_frag_id).split(e_start_dist)
             for frag in [end_r, end_l]:
                 self.frags.insert(e_frag_id, frag)
+            e_frag_id += 1
+            # If fragments are contained in the inversion, invert and flip them.
+            for frag_id in range(s_frag_id, e_frag_id):
+                self.frags[frag_id].flip()
+            self.frags[s_frag_id:e_frag_id] = self.frags[
+                e_frag_id - 1 : s_frag_id - 1 : -1
+            ]
+
         self.clean_frags()
 
     def delete(self, start: int, end: int):
-        """Updates fragments by deleting a portion of the chromosome."""
+        """Updates fragments by deleting a portion of the chromosome.
+        The interval is 0-based and right open [start;end[."""
         s_frag_id, (s_frag_start, _) = self.get_frag_bounds(start)
         e_frag_id, (_, e_frag_end) = self.get_frag_bounds(end - 1)
         del_size = end - start
