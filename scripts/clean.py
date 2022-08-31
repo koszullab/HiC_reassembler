@@ -15,12 +15,10 @@ def clean_dir(directory: str):
 if __name__ == "__main__":
 
     tmpdir = "./tmpdir"
-    outdir_detection = "data/output/detection"
-    outdir_reassembly = "data/output/reassembly"
+    outdir = "data/output"
 
     if os.path.exists(tmpdir): # If an issue has occured during the detection 
                                 # and the tmpdir has not been deleted, it will delete it.
         shutil.rmtree(tmpdir)
 
-    clean_dir(outdir_detection)
-    clean_dir(outdir_reassembly)
+    clean_dir(outdir)

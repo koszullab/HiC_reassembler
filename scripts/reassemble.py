@@ -1,65 +1,76 @@
-# Script used to detect SV breakpoints and reassemble Hi-C maps.
+# Script used to reassemble a matrix, given the breakpoints.
+import pathlib
 import numpy as np
 from Bio import SeqIO
 
-from os.path import join
-
 from os import mkdir
-from shutil import rmtree
 import click
-
-from detector.matrixdetector import Matrixdetector
-from detector.bamdetector import BAMdetector
-from detector.combiner import Combiner
-from reassembler.reassembler import Reassembler
-
+from hiscram.detector.pair_combiner import PairCombiner
+import hicstuff.pipeline as hpi
+from hiscram.reassemble.reassembler import Reassembler
 
 @click.command()
 @click.option(
-    "--binsize", "-b", default=2000, help="Binsize used to create the Hi-C matrix.",
+    "--binsize",
+    "-b",
+    type=int,
+    default=1000,
+    show_default=True,
+    help="Binsize used to create the Hi-C matrix.",
 )
-@click.argument("matrix", type=click.Path(exists=True))
-@click.argument("seq", type=click.Path(exists=True))
-@click.argument("bam", type=click.Path(exists=True))
-@click.argument("chrom_name")
-@click.argument("tmpdir", default="./tmpdir", type=click.Path(exists=False))
-def reassembly(
-    matrix: str, seq: str, bam: str, chrom_name: str, tmpdir: str, binsize: int
-):
+@click.option(
+    "--readlength",
+    "-rl",
+    type=int,
+    show_default=True,
+    default=36,
+)
+@click.option(
+    "--tmpdir",
+    "-T",
+    type=click.Path(exists=False),
+    default="./tmpdir",
+)
+@click.option(
+    "--outdir",
+    "-o",
+    type=click.Path(exists=True),
+    default="data/output/",
+)
+@click.argument("chrom_name", type=str)
+@click.argument("cool", type=click.Path(exists=True, path_type=pathlib.Path))
+@click.argument("pairfile", type=click.Path(exists=True, path_type=pathlib.Path))
+@click.argument("ref_seq", type=click.Path(exists=True, path_type=pathlib.Path))
+@click.argument("breakpoints", type=click.Path(exists=True, path_type=pathlib.Path))
+def reassemble(binsize,readlength,chrom_name,cool,pairfile,breakpoints,ref_seq,tmpdir,outdir):
+    """
+    Given a list of knows breakpoints, executes the SV assembly and the reassembly.
+    """
+
+        # Create temporary drectory
+    try:
+        mkdir(tmpdir)
+    except:
+        pass
     
-    # Create temporary drectory
-    mkdir(tmpdir)
-
-    # Detection on Hi-C
-    MatDetect = Matrixdetector()
-    MatDetect.load()
-    MatDetect.predict(matrix)
-
-    # Detection on BAM
-    BamDetect = BAMdetector()
-    BamDetect.load()
-    BamDetect.predict(bam, seq, binsize, chrom_name)
-
-    # Combine SV breakpoints in order to have SVs
-    SVCombiner = Combiner(binsize, chrom_name, matrix, bam)
+    print("##### SV assembly using pair file #####")
+    SVCombiner = PairCombiner(chrom_name, breakpoints, pairfile, binsize, readlength, tmpdir)
     info_sv = SVCombiner.combine()
-    SVCombiner.save_sv_combined()
 
-    # Reassembly
-    reassembler = Reassembler(info_sv, matrix, seq, chrom_name, binsize)
+    print("##### Genome reassembly #####")
+    reassembler = Reassembler(info_sv,cool,ref_seq,chrom_name,binsize)
     mat_reassembled, seq_reassembled = reassembler.reassembly()
 
-    # Save
-    save_dir = "data/output/reassembly"
-    np.save(join(save_dir, "mat_reassembled.npy"), mat_reassembled)
-
-    with open(join(save_dir, "seq_reassembled.fa"), "w") as fa_out:
+    # Write reassembled genome
+    try:
+        mkdir(outdir)
+    except:
+        pass
+    np.save(outdir + "mat_reassembled.npy", mat_reassembled)
+    with open(outdir + "seq_reassembled_final.fa", "w") as fa_out:
         rec = SeqIO.SeqRecord(seq=seq_reassembled, id=chrom_name, description="")
         SeqIO.write(rec, fa_out, format="fasta")
 
-    # Delete temporary directory
-    rmtree(tmpdir)
-
 
 if __name__ == "__main__":
-    reassembly()
+    reassemble()
