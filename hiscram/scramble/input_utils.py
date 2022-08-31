@@ -6,6 +6,7 @@ cmdoret, 202102010
 import numpy as np
 import pysam as ps
 from typing import Tuple, Iterator
+import cooler
 
 def get_matrix_regions(
     clr: cooler.Cooler,

@@ -64,8 +64,8 @@ start: int, end: int, start_paste: int, matrix: "np.ndarray[N,N]"
     matrix : np.ndarray
         Matrix where we want to correct the forward translocation.
     """
-
     size_insertion = end - start + 1
+    print(start, end, start_paste, size_insertion)
 
     fragment_to_modify_1 = matrix[
             0 : start_paste + 1, start : end + 1
@@ -194,7 +194,7 @@ start: int, end: int, start_paste: int, matrix: "np.ndarray[N,N]"
 
     if end < matrix.shape[0]:
         matrix[end, :] = 0
-    if end < scrambled.shape[1]:
+    if end < matrix.shape[1]:
         matrix[:, end] = 0
 
     return matrix

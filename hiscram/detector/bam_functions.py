@@ -84,7 +84,7 @@ def parse_ucsc_region(ucsc: str) -> Tuple[str, int, int]:
     return chrom, start, end
 
 
-def bam_region_read_ends(file: str, region: str, side: str = "both") -> np.ndarray:
+def bam_region_read_ends(file: str, region: str, side: str = "both", clipped: bool = False) -> np.ndarray:
     """Retrieves the number of read ends at each position for a BAM region.
 
     Parameters
@@ -114,6 +114,12 @@ def bam_region_read_ends(file: str, region: str, side: str = "both") -> np.ndarr
     end_arr = np.zeros(end - start)
 
     for read in bam.fetch(chrom, start, end):
+        if(read.reference_start is None) or (read.reference_end is None):
+            continue
+
+        # Soft clipping
+        if clipped and len(read.cigartuples) == 1:
+            continue
 
         if (read.reference_start - start) >= 0:
             start_arr[read.reference_start - start] += 1

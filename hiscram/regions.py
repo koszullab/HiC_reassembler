@@ -4,7 +4,6 @@ on separate fragments. Each breakpoint consists of two positions. Each of positi
 located on a fragment. Positions have a sign representing what end of a fragment
 they're on.
 """
-#
 from __future__ import annotations
 import copy
 from typing import Optional, Tuple
@@ -103,9 +102,14 @@ class Fragment:
                 f"Cannot split {self} at position {rel_pos}: Beyond fragment end."
             )
         left_frag, right_frag = copy.copy(self), copy.copy(self)
-        left_frag.end = self.start + rel_pos
-        right_frag.start = self.start + rel_pos
-        return (left_frag, right_frag)
+        if(not self.is_reverse):
+            left_frag.end = self.start + rel_pos
+            right_frag.start = self.start + rel_pos
+            return (left_frag, right_frag)
+        else:
+            left_frag.start = self.end - rel_pos
+            right_frag.end = self.end - rel_pos
+            return (left_frag, right_frag)
 
     def flip(self):
         """Change fragment's sign."""
@@ -144,12 +148,14 @@ class BreakPoint:
         self,
         pos1: Position,
         pos2: Position,
+        type: str = "UNK",
     ):
 
         # Properties are use to set/get fragments instead
         self._frag1 = None
         self._frag2 = None
         self.pos1, self.pos2 = pos1, pos2
+        self.type = type
 
     def __repr__(self) -> str:
         p1 = self.pos1
@@ -157,7 +163,7 @@ class BreakPoint:
         if self.has_frags():
             p1 = f"[{self.frag1}]{p1}"
             p2 = f"{p2}[{self.frag2}]"
-        return f"{p1}|{p2}"
+        return f"{p1}|{p2} {self.type}"
 
     @property
     def signs(self) -> Optional[Tuple[str, str]]:

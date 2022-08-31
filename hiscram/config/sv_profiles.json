@@ -1,4 +1,27 @@
-{
+{   
+    "Test": {
+        "SV_freq": 0.0001,
+        "SV_types": {
+            "INV": {
+                "prop": 0,
+                "mean_size": 3,
+                "sd_size": 2,
+                "code": 1
+            },
+            "DEL": {
+                "prop": 0,
+                "mean_size": 4000,
+                "sd_size": 1,
+                "code": 2
+            },
+            "TRA": {
+                "prop": 1,
+                "mean_size": 2000,
+                "sd_size": 2,
+                "code": 3
+            }
+        }
+    },
     "Debug": {
         "SV_freq": 0.1,
         "SV_types": {
@@ -23,19 +46,36 @@
         }
     },
     "Yeast": {
-        "SV_freq": 0.000001,
+        "SV_freq": 0.000002,
         "SV_types": {
             "INV": {
-                "prop": 0.5,
-                "mean_size": 100000,
-                "sd_size": 50000,
+                "prop": 0.40,
+                "mean_size": 40000,
+                "sd_size": 20000,
                 "code": 1
             },
             "DEL": {
-                "prop": 0.5,
-                "mean_size": 80000,
-                "sd_size": 10000,
+                "prop": 0.30,
+                "mean_size": 40000,
+                "sd_size": 20000,
                 "code": 2
+            },
+            "INS": {
+                "prop": 0.30,
+                "mean_size": 40000,
+                "sd_size": 20000,
+                "code": 3
+            }
+        }
+    },
+    "Yeast_INV": {
+        "SV_freq": 0.000002,
+        "SV_types": {
+            "INV": {
+                "prop": 1.00,
+                "mean_size": 50000,
+                "sd_size": 25000,
+                "code": 1
             }
         }
     },

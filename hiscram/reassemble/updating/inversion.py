@@ -24,8 +24,7 @@ def fragment_inv(coord_1 : int, coord_2 : int, shape_matrix : int):
 
     ## Add coordinates of one fragment modified for the linear regression
     if (3 * coords_matrix[0] - 2 * coords_matrix[1] > 0) & (
-        2 * coords_matrix[1] - coords_matrix[0]
-        <= shape_matrix
+        2 * coords_matrix[1] - coords_matrix[0] <= shape_matrix
     ):
 
         fragment = np.array(
@@ -134,18 +133,12 @@ def update_coords_inv(start: int, end: int, coords: Iterable[int]) -> "np.ndarra
     Examples
     --------
     >>> update_coords_inv(12, 20, [4, 18, 22])
-    array([ 4, 14, 16])
+    array([ 4, 14, 22])
     """
-    mid = (end + start) // 2
     coords = np.array(coords)
-    coords_edit = coords[(coords >= start) & (coords <= end)]
-    coords[(coords >= start) & (coords <= end)] = mid + mid - coords_edit
-
-    if (
-        start + end
-    ) % 2 == 1:  # During updating, if start+ end is impair, coords are shifted by one
-
-        coords[(coords == start - 1) | (coords == end - 1)] += 1
+    for i in range(len(coords)):
+        if coords[i] > start and coords[i] < end:
+            coords[i] = coords[i] = end - (coords[i] - start)
 
     return coords
 

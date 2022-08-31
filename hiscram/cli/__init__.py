@@ -1,7 +1,7 @@
 import click
 
 from hiscram import __version__
-import hiscram.cli.scramble as scramble_cli
+import hiscram.cli as scramble_cli
 import hiscram.cli.common as common_cli
 
 

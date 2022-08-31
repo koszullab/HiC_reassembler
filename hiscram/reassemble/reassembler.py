@@ -1,5 +1,5 @@
 # Class used for the reassembly of the Hi-C map.
-
+from turtle import up
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -15,13 +15,16 @@ from Bio.Seq import MutableSeq
 
 from typing import Generator, List, Tuple
 
-import reassembler.updating.inversion as upd_inv
-import reassembler.updating.deletion as upd_del
-import reassembler.updating.insertion as upd_ins
-import reassembler.updating.tra_for as upd_for
-import reassembler.updating.tra_back as upd_back
-
-from svs.svs import SVs
+import hiscram.reassemble.updating.inversion as upd_inv
+import hiscram.reassemble.updating.deletion as upd_del
+import hiscram.reassemble.updating.insertion as upd_ins
+import hiscram.reassemble.updating.tra_for as upd_for
+import hiscram.reassemble.updating.tra_back as upd_back
+from hiscram.reassemble.svs import SVs
+from cooler import Cooler
+import pathlib
+import hicstuff.pipeline as hpi
+from os import mkdir
 
 
 class Reassembler(object):
@@ -41,7 +44,7 @@ class Reassembler(object):
         Informations about all the SVs.
         
     file_scrambled: str
-        Filename of the npy file where the scrambled matrix is.
+        Filename of the cooler file where the scrambled matrix is.
 
     file_seq: str
         Filename of the genome file.
@@ -63,8 +66,8 @@ class Reassembler(object):
     ):
 
         self.svs = info_sv
-        self.file_scrambled = file_scrambled  #  We will use that for plot
-        self.scrambled = np.load(file_scrambled)
+        self.file_scrambled = str(file_scrambled)  #  We will use that for plot
+        self.scrambled = np.array(Cooler(str(file_scrambled)).matrix(balance=False).fetch(chrom_name))
         self.chrom_name = chrom_name
         self.binsize = binsize
         self.seq_scrambled = MutableSeq(self.load_seq(file_seq, self.chrom_name))
@@ -94,7 +97,7 @@ class Reassembler(object):
 
     def check_overlap(self, coords_1: List[int], coords_2: List[int]) -> int:
         """
-        Check if the two SVs are overlapped or not. It eturns the overlap ratio.
+        Check if the two SVs are overlapped or not. It returns the overlap ratio.
 
         Parameters:
         ----------
@@ -358,7 +361,7 @@ class Reassembler(object):
                 np.argsort(coordsBP)
             ]  #  to have sorted coords and sgn associated
 
-        coordsBP = np.sort(coordsBP) 
+        coordsBP = np.sort(coordsBP)
         coords_matrix = coordsBP // self.binsize
 
 
@@ -367,8 +370,9 @@ class Reassembler(object):
             coords_matrix[0],
             coords_matrix[1],
             self.scrambled)
-        self.seq_scrambled = upd_inv.correct_inversion_sequence(coords_matrix[0], coords_matrix[1], self.seq_scrambled)
-    
+
+        self.seq_scrambled = upd_inv.correct_inversion_sequence(coordsBP[0], coordsBP[1], self.seq_scrambled)
+
         # Update coords
         self.svs.coordsBP1 = upd_inv.update_coords_inv(
             coordsBP[0], coordsBP[1], self.svs.coordsBP1
@@ -410,19 +414,20 @@ class Reassembler(object):
             )
 
     def correct_forward_translocation(self,index_sv):
+        # Not used anymore, because correcting forward is exactly equivalent to correcting backward
 
         # To have coordinates linked to the sv
         coordsBP_del = np.array(
             [
                 self.svs.coordsBP1[index_sv],
-                self.svs.coordsBP3[index_sv],
+                self.svs.coordsBP2[index_sv],
             ]
         ) # coords of deletion linked to translocation
         if self.sgns_exist:
             sgns_del = np.array(
                 [
                     self.svs.sgnsBP1[index_sv],
-                    self.svs.sgnsBP3[index_sv],
+                    self.svs.sgnsBP2[index_sv],
                 ]
             )
             sgns_del = sgns_del[
@@ -431,23 +436,27 @@ class Reassembler(object):
         coordsBP_del = np.sort(coordsBP_del)
         beg_seq_del = coordsBP_del[0]
         end_seq_del = coordsBP_del[1]
-        beg_seq_ins = self.svs.coordsBP2[index_sv] # coords of insertion linked to translocation
+        beg_seq_ins = self.svs.coordsBP3[index_sv] # coords of insertion linked to translocation
 
         if self.sgns_exist:
-            sgns_ins = self.svs.sgnsBP2[index_sv]
+            sgns_ins = self.svs.sgnsBP3[index_sv]
 
         coord_matrix_start_del = beg_seq_del // self.binsize
         coord_matrix_end_del = end_seq_del // self.binsize
         coord_matrix_start_ins = beg_seq_ins // self.binsize
 
         # Corrections in the matrix and in the sequence                 
-        self.scrambled = upd_for.correct_forward_translocation_matrix(
+        self.scrambled = upd_for.correct_forward_translocation_scrambled(
             coord_matrix_start_del,
             coord_matrix_end_del,
             coord_matrix_start_ins,
             self.scrambled
         )
-        self.seq_scrambled = upd_for.correct_translocation_sequence(coord_matrix_start_del, coord_matrix_end_del, coord_matrix_start_ins, self.seq_scrambled)
+        self.seq_scrambled = upd_for.translocation(
+            coord_matrix_start_del, 
+            coord_matrix_end_del, 
+            coord_matrix_start_ins, 
+            self.seq_scrambled)
 
         # Update sgns
         if self.sgns_exist:
@@ -482,19 +491,19 @@ class Reassembler(object):
             ][index_BP3]
 
         # Update coords
-        self.svs.coordsBP1 = upd.update_coords_tra(
+        self.svs.coordsBP1 = upd_for.update_coords_tra(
             beg_seq_del,
             end_seq_del,
             beg_seq_ins,
             self.svs.coordsBP1,
         )
-        self.svs.coordsBP2 = upd.update_coords_tra(
+        self.svs.coordsBP2 = upd_for.update_coords_tra(
             beg_seq_del,
             end_seq_del,
             beg_seq_ins,
             self.svs.coordsBP2,
         )
-        self.svs.coordsBP3 = upd.update_coords_tra(
+        self.svs.coordsBP3 = upd_for.update_coords_tra(
             beg_seq_del,
             end_seq_del,
             beg_seq_ins,
@@ -503,46 +512,49 @@ class Reassembler(object):
 
     def correct_back_translocation(self, index_sv):
         
+        # Re-sort the bps (because previous corrections can shuffle the sorting)
+        bp_sorted = np.sort([self.svs.coordsBP1[index_sv], self.svs.coordsBP2[index_sv], self.svs.coordsBP3[index_sv]])
+
         # To have coordinates linked to the sv
         coordsBP_del = np.array(
             [
-                self.svs.coordsBP1[index_sv],
-                self.svs.coordsBP3[index_sv],
+                bp_sorted[0],
+                bp_sorted[1],
             ]
         ) # coords of deletion linked to translocation
+        # Obselete
         if self.sgns_exist:
             sgns_del = np.array(
                 [
                     self.svs.sgnsBP1[index_sv],
-                    self.svs.sgnsBP3[index_sv],
+                    self.svs.sgnsBP2[index_sv],
                 ]
             )
             sgns_del = sgns_del[
                 np.argsort(coordsBP_del)
             ]  #  to have sorted coords and sgn associated
-        coordsBP_del = np.sort(coordsBP_del)
-        beg_seq_del = coordsBP_del[0]
-        end_seq_del = coordsBP_del[1]
-        beg_seq_ins = self.svs.coordsBP2[index_sv] # coords of insertion linked to translocation
+        beg_seq_del = bp_sorted[0]
+        end_seq_del = bp_sorted[1]
+        beg_seq_ins = bp_sorted[2] # coords of insertion linked to translocation
 
         if self.sgns_exist:
-            sgns_ins = self.svs.sgnsBP2[index_sv]
+            sgns_ins = self.svs.sgnsBP3[index_sv]
 
         coord_matrix_start_del = beg_seq_del // self.binsize
         coord_matrix_end_del = end_seq_del // self.binsize
         coord_matrix_start_ins = beg_seq_ins // self.binsize
 
         # Correction in the matrix and the sequence
-        self.scrambled = upd_back.correct_back_translocation_matrix(
+        self.scrambled = upd_back.correct_back_translocation_scrambled(
             coord_matrix_start_del,
             coord_matrix_end_del,
             coord_matrix_start_ins,
             self.scrambled
         )
-        self.seq_scrambled = upd_back.correct_translocation_sequence(
-            coord_matrix_start_del, 
-            coord_matrix_end_del, 
-            coord_matrix_start_ins, 
+        self.seq_scrambled = upd_back.translocation(
+            beg_seq_del, 
+            end_seq_del, 
+            beg_seq_ins, 
             self.seq_scrambled
         )
 
@@ -653,8 +665,8 @@ class Reassembler(object):
 
     def find_best_path(self) -> Tuple[List[str], List[float]]:
         """
-        Test every path and returns the best path. For each path, the programs reassemble
-        and make a linear regression between the local average contact and the global
+        Test every path and returns the best path. For each path, the program reassembleS
+        and makes a linear regression between the local average contact and the global
         average contact. Keep the path with the best Rsquared associated. It returns the
         best paths with the scores associated.
         """
@@ -667,13 +679,15 @@ class Reassembler(object):
         # Keep old value because we want to test all combinaisons
         scrambled_old = np.copy(
             self.scrambled
-        )  
+        )
+        seq_old = MutableSeq(self.seq_scrambled)
         coordsBP1_old = np.copy(self.svs.coordsBP1)
         coordsBP2_old = np.copy(self.svs.coordsBP2)
         coordsBP3_old = np.copy(self.svs.coordsBP3)
         sgns_BP1_old = np.copy(self.svs.sgnsBP1)
         sgns_BP2_old = np.copy(self.svs.sgnsBP2)
         sgns_BP3_old = np.copy(self.svs.sgnsBP3)
+
 
         print("REASSEMBLY OF COMPLEX SVs:")
         n_combinaisons_tested = sum([len(paths) for paths in paths_for_each_subgraph])
@@ -699,9 +713,7 @@ class Reassembler(object):
                     self.svs.sgnsBP2 = np.copy(sgns_BP2_old)
                     self.svs.sgnsBP3 = np.copy(sgns_BP3_old)
 
-                    path_ = path[1:][
-                        0
-                    ]  # The first element is the number of SVs in the path. [0] because it is a tuple.
+                    path_ = path[1:][0]  # The first element is the number of SVs in the path. [0] because it is a tuple.
 
                     fragments = list() # Fragment we will use to make the linear_regression (fragment = local matrix)
 
@@ -710,40 +722,40 @@ class Reassembler(object):
                         index_sv = np.where(self.svs.sv_name == sv_name)[0][0]
 
                         if self.svs.sv_type[index_sv] == "INV":
-
                             self.correct_inversion(index_sv)
                             ## Add coordinates of one fragment modified for the linear regression
-                            fragments.append(upd_inv.fragment_inv(self.svs.coordsBP1[index_sv]//self.binsize, 
+                            fragment = upd_inv.fragment_inv(self.svs.coordsBP1[index_sv]//self.binsize, 
                                                                 self.svs.coordsBP2[index_sv]//self.binsize, 
-                                                                self.scrambled.shape[0]))
+                                                                self.scrambled.shape[0])
+                            fragments.append(fragment)
 
                         elif self.svs.sv_type[index_sv] == "TRA_forward":
-
                             self.correct_forward_translocation(index_sv)
-
                             ## Add coordinates of one fragment modified for the linear regression
-                            fragments.append(udp_for.fragment_for(self.svs.coordsBP1[index_sv]//self.binsize, 
-                                                                  self.svs.coordsBP3[index_sv]//self.binsize, 
-                                                                  self.svs.coordsBP2[index_sv]))
+                            fragments.append(upd_for.fragment_tra_for(self.svs.coordsBP1[index_sv]//self.binsize, 
+                                                                  self.svs.coordsBP2[index_sv]//self.binsize, 
+                                                                  self.svs.coordsBP3[index_sv]))
 
                         elif self.svs.sv_type[index_sv] == "TRA_back":
-
                             self.correct_back_translocation(index_sv)
                             ## Add coordinates of one fragment modified for the linear regression
-                            fragments.append(udp_back.fragment_back(self.svs.coordsBP1[index_sv]//self.binsize, 
-                                                                    self.svs.coordsBP3[index_sv]//self.binsize, 
-                                                                    self.svs.coordsBP2[index_sv]//self.binsize))
-
+                            try:
+                                fragment = upd_back.fragment_tra_back(self.svs.coordsBP1[index_sv]//self.binsize, 
+                                                                    self.svs.coordsBP2[index_sv]//self.binsize, 
+                                                                    self.svs.coordsBP3[index_sv]//self.binsize)
+                                if fragment[0][0] >= 0:
+                                    fragments.append(fragment)
+                            except:
+                                pass
+                            
                         elif self.svs.sv_type[index_sv] == "INS":
-
                             self.correct_insertion(index_sv)
                             # No fragment here because we just add lines
 
                         elif self.svs.sv_type[index_sv] == "DEL":
-
                             self.correct_deletion(index_sv)
                             ## Add coordinates of one fragment modified for the linear regression
-                            fragments.append(udp_del.fragment_del(self.svs.coordsBP1[index_sv]//self.binsize, 
+                            fragments.append(upd_del.fragment_del(self.svs.coordsBP1[index_sv]//self.binsize, 
                                                                     self.svs.coordsBP3[index_sv]//self.binsize))
 
                     # We have the coordinates of each local matrix where we will make the linear regression after that.
@@ -782,7 +794,7 @@ class Reassembler(object):
                         good_sgns = True  # To satisfy the condition
 
                     ## Linear regression for each local matrix, mean of R² will be done
-                    if good_sgns:  
+                    if good_sgns:
 
                         path_with_good_sign.append(path_)
                         sv_name_enough_values = (
@@ -804,6 +816,8 @@ class Reassembler(object):
                             nb_row = local_scrambled.shape[0]
                             nb_col = local_scrambled.shape[1]
                             
+                            # If some bps are too close, fragments can be of size 0. That raises an error.
+                            if(nb_row == 0 or nb_col == 0): continue
 
                             # To know at which col/row belongs each element of the local matrix
                             mat_row_local = (
@@ -814,7 +828,7 @@ class Reassembler(object):
                                     ).tolist()
                                     * nb_col
                                 )
-                                .reshape((nb_row, nb_col))
+                                .reshape((nb_col, nb_row))
                                 .T
                             )
                             mat_col_local = np.matrix(
@@ -895,6 +909,7 @@ class Reassembler(object):
 
         # Scrambled like before
         self.scrambled = np.copy(scrambled_old)
+        self.seq_scrambled = seq_old
 
         self.svs.coordsBP1 = np.copy(coordsBP1_old)
         self.svs.coordsBP2 = np.copy(coordsBP2_old)
@@ -918,6 +933,7 @@ class Reassembler(object):
         print("REASSEMBLY OF SIMPLE SV:")
         nodes_graph = np.array(self.graph.nodes)
         n_simple_sv = len(self.svs.sv_name) - len(nodes_graph)
+        simple_svs = []
         with alive_bar(n_simple_sv) as bar:  # Create progresing bar
             for sv_name in self.svs.sv_name:
 
@@ -927,7 +943,8 @@ class Reassembler(object):
 
                     index_sv = np.where(self.svs.sv_name == sv_name)[0][
                         0
-                    ]  # [0][0] to have the "int", not tuple or array.
+                    ]  # [0][0] to have the "int", not tuple or array.print
+                    simple_svs.append(index_sv)
 
                     if self.svs.sv_type[index_sv] == "INV":
                         self.correct_inversion(index_sv)
@@ -945,10 +962,9 @@ class Reassembler(object):
                         self.correct_deletion(index_sv)
 
                     bar()
-
+        print("simple svs : ", simple_svs)
         # After that, we find the best combinaisons of complex SV
         best_paths, best_scores = self.find_best_path()
-
         final_path = []
 
         for i in range(0, len(best_paths)):
@@ -963,16 +979,17 @@ class Reassembler(object):
         """
 
         pipeline = self.create_pipeline()
+        print("pipeline : ", pipeline)
 
         for sv_name in pipeline:
 
             index_sv = np.where(self.svs.sv_name == sv_name)[0][
                 0
             ]  # [0][0] to have the "int", not tuple or array.
-
+            
             if self.svs.sv_type[index_sv] == "INV":
                 self.correct_inversion(index_sv)
-
+            
             elif self.svs.sv_type[index_sv] == "TRA_forward":
                 self.correct_forward_translocation(index_sv)
 
@@ -980,14 +997,11 @@ class Reassembler(object):
                 self.correct_back_translocation(index_sv)
 
             elif self.svs.sv_type[index_sv] == "INS":
-
                 self.correct_insertion(index_sv)
-
+            
             elif self.svs.sv_type[index_sv] == "DEL":
-
                 self.correct_deletion(index_sv)
 
-        self.plot_difference()
         return self.scrambled, self.seq_scrambled
 
     def plot_difference(self):
@@ -998,7 +1012,7 @@ class Reassembler(object):
         fig, ax = plt.subplots(2)
 
         # Before reassembly
-        img_scrambled = ax[0].imshow(np.load(self.file_scrambled), cmap="afmhot_r")
+        img_scrambled = ax[0].imshow(np.array(Cooler(str(self.file_scrambled)).matrix(balance=False).fetch(self.chrom_name)), cmap="afmhot_r")
         ax[0].set_title("Scrambled matrix")
 
         # After reassembly
@@ -1009,3 +1023,17 @@ class Reassembler(object):
         plt.colorbar(img_reassembled, ax=ax[1])
 
         fig.savefig("data/output/reassembly/difference.png")
+        plt.show()
+
+    '''
+    def print_genome(self, pipeline=True):
+        try:
+            mkdir(self.matrix_dir / "reassembly",)
+        except:
+            pass
+
+        with open(self.matrix_dir / "reassembly" / f"seq_reassembled_{self.step_index}.fa", "w") as fa_out:
+            rec = SeqIO.SeqRecord(seq=self.seq_scrambled, id=self.chrom_name, description="")
+            SeqIO.write(rec, fa_out, format="fasta")
+    '''
+        

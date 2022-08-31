@@ -25,6 +25,7 @@ def fragment_tra_back(coord_del_1 : int, coord_del_2 : int, coord_ins : int):
     coord_matrix_end_del = coords_matrix_del[1]
 
     ## Add coordinates of one fragment modified for the linear regression
+    # Can be largely improve (raises errors due to out of bound fragments)
     fragment = np.array(
         [
             [
@@ -44,6 +45,8 @@ def fragment_tra_back(coord_del_1 : int, coord_del_2 : int, coord_ins : int):
         ]
     )
     return fragment
+
+    
 def correct_back_translocation_scrambled(start: int, end: int, start_paste: int, matrix: "np.ndarray[N,N]"
 ) -> "np.ndarray[N,N]":
     """
@@ -101,7 +104,7 @@ def correct_back_translocation_scrambled(start: int, end: int, start_paste: int,
         ),
         axis=1,
     )
-    # Ceation fragment that we will insert in the white spaces
+    # Creation fragment that we will insert in the white spaces
     insertion_1 = np.concatenate(
         (
             fragment_to_modify_1,
@@ -114,6 +117,7 @@ def correct_back_translocation_scrambled(start: int, end: int, start_paste: int,
         ),
         axis=1,
     )
+    print(f"Correcting translocation with {start}|{end} -> {start_paste} of size {size_insertion}")
     insertion_2 = np.concatenate(
         (
             np.zeros((size_insertion, start_paste - size_insertion)),

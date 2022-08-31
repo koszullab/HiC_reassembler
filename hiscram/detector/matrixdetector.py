@@ -1,15 +1,17 @@
 # Trying a simple keras NN to predict SVs in a Hi-C matrix.
 
 from os.path import join
+from pathlib import Path
 import numpy as np
 from time import time
 import matplotlib.pyplot as plt
+import cooler
 
 import os  # To remove warnings
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
-
+import keras
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
@@ -18,15 +20,13 @@ from sklearn.metrics import (
     precision_score,
 )
 
-import keras
-from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from keras.models import model_from_json
 
 from alive_progress import alive_bar
 
 import joblib
-from detector.utils import white_index, delete_index
+from hiscram.detector.utils import white_index, delete_index
 
 
 import warnings
@@ -62,14 +62,12 @@ class Matrixdetector(object):
     def __init__(
         self,
         n_neurons: int = 40,
-        training_path: str = "./data/training/matrixdetection",
+        training_path: str = "./data/training/matrixdetector",
         tmpdir: str = "./tmpdir",
     ):
-        self.load_data(training_path)
-        self.img_size = self.xtrain.shape[1]
-        self.n_labels = len(np.unique(self.ytrain))
-        self.matrixdetector = self.create_CNN(n_neurons)
         self.tmpdir = tmpdir
+        self.n_neurons = n_neurons
+        self.training_path = training_path
 
     def load_data(self, training_path: str):
 
@@ -84,7 +82,8 @@ class Matrixdetector(object):
 
         x_data = np.load(join(training_path, "imgs.npy"))
         x_data = x_data.reshape((x_data.shape[0], x_data.shape[1], x_data.shape[2], 1))
-        y_data = np.load(join(training_path, "imgslabels.npy"))
+        print(f"x_data shape = {x_data.shape}")
+        y_data = np.load(join(training_path, "labels.npy"))
 
         (self.xtrain, self.xvalid, self.ytrain, self.yvalid,) = train_test_split(
             x_data, y_data, train_size=0.8
@@ -99,8 +98,12 @@ class Matrixdetector(object):
             self.xvalid.reshape(-1, self.xvalid.shape[-1])
         ).reshape(self.xvalid.shape)
 
-    def create_CNN(self, n_neurons: int):
+    def create_dense_NN(self, n_neurons : int):
+        model = tf.keras.models.Sequential()
+        model.add(tf.keras.Input(shape=(self.img_size, self.img_size, 1), name="Input"))
+        
 
+    def create_CNN(self, n_neurons: int):
         """
         Builds model from scratch for training.
 
@@ -116,17 +119,17 @@ class Matrixdetector(object):
 
         # Initializes a sequential model (i.e. linear stack of layers)
         model = tf.keras.models.Sequential()
-        model.add(keras.Input(shape=(self.img_size, self.img_size, 1), name="Input"))
+        model.add(tf.keras.Input(shape=(self.img_size, self.img_size, 1), name="Input"))
         # Need to start w/ some conv layers to use neighbourhood info
         # conv2d(n_output_channels, kernel_size, ...)
         # 128x128 - (k-1) -> 126x126
         model.add(tf.keras.layers.Conv2D(32, 3, activation="relu"))
         # Dropout to reduce overfitting
-        model.add(tf.keras.layers.Dropout(0.4))
+        model.add(tf.keras.layers.Dropout(0.2))
         # 126x126 / 2 -> 62x62x32
         model.add(tf.keras.layers.MaxPooling2D((2, 2)))
         model.add(tf.keras.layers.Conv2D(64, 3, activation="relu"))
-        model.add(tf.keras.layers.Dropout(0.4))
+        model.add(tf.keras.layers.Dropout(0.2))
         # 62x62 / 2 -> 30x30x64
         model.add(tf.keras.layers.MaxPooling2D((2, 2)))
         # Finish up by flattening and feeding to a dense layer
@@ -143,17 +146,20 @@ class Matrixdetector(object):
 
         # Optimizer
         learning_rate = 1e-3  # Paramètres
-        optimizer = Adam(learning_rate)
+        optimizer = tf.keras.optimizers.Adam()
 
         model.compile(
             optimizer=optimizer,
             loss="sparse_categorical_crossentropy",
             metrics=["accuracy"],
         )
-
+        
         return model
+    
+    def print_model(self):
+        print(self.matrixdetector.summary())
 
-    def train(self, n_epochs: int = 70):
+    def train(self, n_epochs: int = 10):
 
         """
         Train model with training set.
@@ -163,6 +169,12 @@ class Matrixdetector(object):
         n_epochs : int
             Number of epochs for the training.
         """
+        self.load_data(self.training_path)
+        self.img_size = self.xtrain.shape[1]
+        print(f"Image size = {self.img_size}")
+        self.n_labels = len(np.unique(self.ytrain))
+        print(f"Number of labels = {self.n_labels}")
+        self.matrixdetector = self.create_CNN(self.n_neurons)
 
         print(
             "TRAIN detector ON DATASET WITH {n_pic} PICTURES.".format(
@@ -185,7 +197,7 @@ class Matrixdetector(object):
         time_begin = time()
 
         # Training
-        self.matrixdetector.fit(
+        self.history = self.matrixdetector.fit(
             self.xtrain,
             self.ytrain,
             validation_data=(self.xvalid, self.yvalid),
@@ -219,8 +231,8 @@ class Matrixdetector(object):
                 average=None,
             ),
         )
-
-    def predict(self, file_scrambled: str):
+    @tf.autograph.experimental.do_not_convert
+    def predict(self, file_scrambled: Path,chrom_name: str):
 
         """
         Find indexes where the detector detects a SV.
@@ -228,13 +240,12 @@ class Matrixdetector(object):
         Parameters
         ----------
         file_scrambled : str
-            File where is the scrambled Hi-C matrix which we want to detect structural variations.
+            Cooler file where is the scrambled Hi-C matrix which we want to detect structural variations.
         """
-
-        scrambled = np.load(file_scrambled)
         
+        scrambled = np.array(cooler.Cooler(file_scrambled).matrix(balance=False).fetch(chrom_name))
+            # print(f"shape of the given matrix = {scrambled.shape}")
         
-
         half_img_size = self.img_size // 2
 
         ind_beg = half_img_size  # Because the pictures has a size N*N,
@@ -242,18 +253,13 @@ class Matrixdetector(object):
         ind_end = scrambled.shape[0] - half_img_size
 
         index_used = np.arange(ind_beg, ind_end) # Index used for our detection (we remove the index linked white bands).
+            # print(f"index used : {index_used}")
         index_not_used = white_index(scrambled) # Detect white bands. We will not 
                                                 # take index of white bands for our detection
         index_used = delete_index(index_used, index_not_used)
 
-        inds_INV_detected = list()
-        probs_INV_detected = list()
-
-        inds_INS_detected = list()
-        probs_INS_detected = list()
-
-        inds_DEL_detected = list()
-        probs_DEL_detected = list()
+        inds_SV_detected = list()
+        probs_SV_detected = list()
 
         print("DETECTION OF SVs ON HI-C:")
         with alive_bar(len(index_used)) as bar:  #  Allow to show progression bar.
@@ -265,46 +271,35 @@ class Matrixdetector(object):
                     i - half_img_size : i + half_img_size,
                 ]
 
-                slice_scrambled = self.scaler.transform(slice_scrambled).reshape(
-                    (-1, slice_scrambled.shape[0], slice_scrambled.shape[1], 1,)
+                slice_scrambled = slice_scrambled.reshape(slice_scrambled.shape[0],slice_scrambled.shape[1],1)
+                slice_scrambled = self.scaler.transform(slice_scrambled.reshape(-1, slice_scrambled.shape[-1])
+                ).reshape(
+                    (1, slice_scrambled.shape[0], slice_scrambled.shape[1], 1,)
                 )
-
+                prediction = self.matrixdetector.predict(slice_scrambled)
                 others_labels = np.argmax(
-                    self.matrixdetector.predict(slice_scrambled), axis=1
+                    prediction, axis=1
                 )
+                # print(f"{i} -> {prediction}")
 
                 if others_labels == 1:
-                    inds_INV_detected.append(i)
-                    probs_INV_detected.append(
-                        self.matrixdetector.predict(slice_scrambled)[0, 1]
-                    )
-
-                if others_labels == 2:
-                    inds_INS_detected.append(i)
-                    probs_INS_detected.append(
-                        self.matrixdetector.predict(slice_scrambled)[0, 2]
-                    )
-                if others_labels == 3:
-                    inds_DEL_detected.append(i)
-                    probs_DEL_detected.append(
-                        self.matrixdetector.predict(slice_scrambled)[0, 3]
+                    inds_SV_detected.append(i)
+                    probs_SV_detected.append(
+                        prediction[0, 1]
                     )
                 bar()
 
-        inds_INV_detected = np.array(inds_INV_detected)
-        inds_INS_detected = np.array(inds_INS_detected)
-        inds_DEL_detected = np.array(inds_DEL_detected)
+        inds_SV_detected = np.array(inds_SV_detected)
 
         # Save to a temporary directory the index detected. BAMdetector will take
         # it.
-        np.save(join(self.tmpdir, "INV_index.npy"), inds_INV_detected)
-        np.save(join(self.tmpdir, "INS_index.npy"), inds_INS_detected)
-        np.save(join(self.tmpdir, "DEL_index.npy"), inds_DEL_detected)
+        np.save(join(self.tmpdir, "SV_index.npy"), inds_SV_detected)
 
         # Save also the index of white bands, and index of the beginning and the
         # end of the sliding window.
         coords_delim = np.array([ind_beg, ind_end])
         np.save(join(self.tmpdir, "coords_delim.npy"), coords_delim)
+        return inds_SV_detected, probs_SV_detected
 
     def confusion_matrix(self):
         """
@@ -314,26 +309,22 @@ class Matrixdetector(object):
             self.yvalid, np.argmax(self.matrixdetector.predict(self.xvalid), axis=1),
         )
 
-    def plot(self, history: dict):
+    def plot(self):
         """
         Plot the evolution of loss, val_loss, accuracy, val_accuracy during the training.
-        
-        history: dict
-            Dictionnary created during the training where there are the informations
-            of the training (evolution of accuracy, loss ...).
         """
 
         # Plot training & validation accuracy values
         fig, ax = plt.subplots(1, 2)
-        ax[0].plot(history.history["accuracy"], label="Train")
-        ax[0].plot(history.history["val_accuracy"], label="Test")
+        ax[0].plot(self.history.history["accuracy"], label="Train")
+        ax[0].plot(self.history.history["val_accuracy"], label="Test")
         ax[0].set_title("Model accuracy")
         ax[0].set_ylabel("Accuracy")
         ax[0].set_xlabel("Epoch")
         ax[0].set_ylim(0, 1)
         # Plot training & validation loss values
-        ax[1].plot(history.history["loss"], label="Train")
-        ax[1].plot(history.history["val_loss"], label="Test")
+        ax[1].plot(self.history.history["loss"], label="Train")
+        ax[1].plot(self.history.history["val_loss"], label="Test")
         ax[1].set_title("Model loss")
         ax[1].set_ylabel("Loss")
         ax[1].set_xlabel("Epoch")
@@ -341,7 +332,7 @@ class Matrixdetector(object):
         plt.legend(loc="upper left")
         plt.show()
 
-    def save(self, model_dir: str = "data/models"):
+    def save(self, model_dir: str = "data/models/matrixdetector"):
         """
         Saves models configuration and weights to disk.
 
@@ -378,3 +369,8 @@ class Matrixdetector(object):
         )
         self.matrixdetector = loaded_model
         self.scaler = joblib.load(join(model_dir, "scaler.gz"))
+        try:
+            x_data = np.load(join(self.training_path, "imgs.npy"))
+            self.img_size = x_data[0].shape[0]
+        except:
+            self.img_size = 128

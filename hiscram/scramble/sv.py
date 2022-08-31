@@ -102,9 +102,11 @@ class Mixer(object):
             print(
                 f"Generating {', '.join([str(num) + ' ' + sv for sv, num in n_events.items()])}"
             )
+        p = np.array(list(n_events.values())) / n_sv
+        p = p/sum(p)
         sv_list = np.random.choice(
             list(n_events.keys()),
-            p=np.array(list(n_events.values())) / n_sv,
+            p=p,
             size=n_sv,
         )
         for event_type in tqdm(sv_list, disable=not progress):
@@ -168,6 +170,16 @@ class Mixer(object):
             s2 = "+" if p2.sign else "-"
             bedpe_out.write(
                 f"{format_pos(p1)}\t{format_pos(p2)}\t.\t.\t{s1}\t{s2}\n"
+            )
+    
+    def write_breakpoints_labeled(self, bedpe_out: IO):
+        bps = self.genome.get_breakpoints_labeled()
+        format_pos = lambda p: "\t".join(map(str, [p.chrom, p.coord, p.coord]))
+        for bp in bps:
+            p1 = bp.pos1
+            p2 = bp.pos2
+            bedpe_out.write(
+                f"{format_pos(p1)}\t{format_pos(p2)}\t{bp.type}\t.\t.\t.\n"
             )
 
 
