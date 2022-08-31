@@ -11,3 +11,5 @@ pysam
 scikit-learn
 tensorflow
 tqdm
+pypairix
+pyfastx
