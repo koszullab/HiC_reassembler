@@ -162,3 +162,5 @@ The outputs of the pipeline are stored in `data/output/`.
 * "detected_breakpoints.txt", a list of the breakpoints detected after the detection on the matrix and the alignment files.
 * "assembled_sv.txt", a list of the structural variations assembled by the program, based on the detected breakpoints and the pair file.
 * "seq_reassembled.fa", the reassembled sequence as a fasta file.
+
+<img src="docs/assets/Reassemble.png"  width="800" height="400">

@@ -13,7 +13,7 @@ R2 = "test_data/sample.reads_rev.fastq.gz"
 def tmp_dir():
     tmp_dir = tempfile.TemporaryDirectory()
     yield tmp_dir
-    tmp_dir.cleanup()
+    # tmp_dir.cleanup()
 
 
 def test_scramble(tmp_dir):
